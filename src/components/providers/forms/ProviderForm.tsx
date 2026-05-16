@@ -205,7 +205,7 @@ function ProviderFormFull({
   const [endpointAutoSelect, setEndpointAutoSelect] = useState<boolean>(
     () => initialData?.meta?.endpointAutoSelect ?? true,
   );
-  const supportsFullUrl = appId === "claude" || appId === "codex";
+  const supportsFullUrl = appId === "claude" || appId === "claude-cn" || appId === "codex";
   const [localIsFullUrl, setLocalIsFullUrl] = useState<boolean>(() => {
     if (!supportsFullUrl) return false;
     return initialData?.meta?.isFullUrl ?? false;
@@ -301,7 +301,8 @@ function ProviderFormFull({
 
   const [localApiKeyField, setLocalApiKeyField] = useState<ClaudeApiKeyField>(
     () => {
-      if (appId !== "claude") return "ANTHROPIC_AUTH_TOKEN";
+      if (appId !== "claude" && appId !== "claude-cn")
+        return "ANTHROPIC_AUTH_TOKEN";
       if (initialData?.meta?.apiKeyField) return initialData.meta.apiKeyField;
       // Infer from existing config env
       const env = (initialData?.settingsConfig as Record<string, unknown>)
@@ -332,7 +333,10 @@ function ProviderFormFull({
     selectedPresetId,
     category,
     appType: appId,
-    apiKeyField: appId === "claude" ? localApiKeyField : undefined,
+    apiKeyField:
+      appId === "claude" || appId === "claude-cn"
+        ? localApiKeyField
+        : undefined,
   });
 
   const { baseUrl, handleClaudeBaseUrlChange } = useBaseUrlState({
@@ -359,7 +363,7 @@ function ProviderFormFull({
   });
 
   const [localApiFormat, setLocalApiFormat] = useState<ClaudeApiFormat>(() => {
-    if (appId !== "claude") return "anthropic";
+    if (appId !== "claude" && appId !== "claude-cn") return "anthropic";
     return initialData?.meta?.apiFormat ?? "anthropic";
   });
 
@@ -508,8 +512,10 @@ function ProviderFormFull({
     handleTemplateValueChange,
     validateTemplateValues,
   } = useTemplateValues({
-    selectedPresetId: appId === "claude" ? selectedPresetId : null,
-    presetEntries: appId === "claude" ? presetEntries : [],
+    selectedPresetId:
+      appId === "claude" || appId === "claude-cn" ? selectedPresetId : null,
+    presetEntries:
+      appId === "claude" || appId === "claude-cn" ? presetEntries : [],
     settingsConfig: form.getValues("settingsConfig"),
     onConfigChange: handleSettingsConfigChange,
   });
@@ -525,11 +531,14 @@ function ProviderFormFull({
   } = useCommonConfigSnippet({
     settingsConfig: form.getValues("settingsConfig"),
     onConfigChange: handleSettingsConfigChange,
-    initialData: appId === "claude" ? initialData : undefined,
+    initialData:
+      appId === "claude" || appId === "claude-cn" ? initialData : undefined,
     initialEnabled:
-      appId === "claude" ? initialData?.meta?.commonConfigEnabled : undefined,
+      appId === "claude" || appId === "claude-cn"
+        ? initialData?.meta?.commonConfigEnabled
+        : undefined,
     selectedPresetId: selectedPresetId ?? undefined,
-    enabled: appId === "claude",
+    enabled: appId === "claude" || appId === "claude-cn",
   });
 
   const {
@@ -794,7 +803,10 @@ function ProviderFormFull({
     const issues: string[] = [];
 
     // 模板变量未填：A 类（空值）
-    if (appId === "claude" && templateValueEntries.length > 0) {
+    if (
+      (appId === "claude" || appId === "claude-cn") &&
+      templateValueEntries.length > 0
+    ) {
       const validation = validateTemplateValues();
       if (!validation.isValid && validation.missingField) {
         issues.push(
@@ -975,7 +987,7 @@ function ProviderFormFull({
     // 非官方供应商端点 / API Key 空：A 类
     // cloud_provider（如 Bedrock）通过模板变量处理认证，跳过通用校验
     if (category !== "official" && category !== "cloud_provider") {
-      if (appId === "claude") {
+      if (appId === "claude" || appId === "claude-cn") {
         if (!isCodexOauthProvider && !baseUrl.trim()) {
           issues.push(
             t("providerForm.endpointRequired", {
@@ -1188,7 +1200,7 @@ function ProviderFormFull({
     const nextMeta: ProviderMeta = {
       ...(baseMeta ?? {}),
       commonConfigEnabled:
-        appId === "claude"
+        appId === "claude" || appId === "claude-cn"
           ? useCommonConfig
           : appId === "codex"
             ? useCodexCommonConfigFlag
@@ -1227,11 +1239,12 @@ function ProviderFormFull({
           ? pricingConfig.pricingModelSource
           : undefined,
       apiFormat:
-        appId === "claude" && category !== "official"
+        (appId === "claude" || appId === "claude-cn") &&
+        category !== "official"
           ? localApiFormat
           : undefined,
       apiKeyField:
-        appId === "claude" &&
+        (appId === "claude" || appId === "claude-cn") &&
         category !== "official" &&
         localApiKeyField !== "ANTHROPIC_AUTH_TOKEN"
           ? localApiKeyField
@@ -1757,7 +1770,7 @@ function ProviderFormFull({
             }
           />
 
-          {appId === "claude" && (
+          {(appId === "claude" || appId === "claude-cn") && (
             <ClaudeFormFields
               providerId={providerId}
               shouldShowApiKey={

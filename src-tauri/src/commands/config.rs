@@ -69,6 +69,13 @@ pub async fn get_config_status(
 ) -> Result<ConfigStatus, String> {
     match AppType::from_str(&app).map_err(|e| e.to_string())? {
         AppType::Claude => Ok(config::get_claude_config_status()),
+        AppType::ClaudeCn => {
+            let path = config::get_claude_cn_settings_path();
+            Ok(ConfigStatus {
+                exists: path.exists(),
+                path: path.to_string_lossy().to_string(),
+            })
+        }
         AppType::ClaudeDesktop => {
             let status = crate::claude_desktop_config::get_status(
                 state.db.as_ref(),
@@ -137,6 +144,7 @@ pub async fn get_claude_code_config_path() -> Result<String, String> {
 pub async fn get_config_dir(app: String) -> Result<String, String> {
     let dir = match AppType::from_str(&app).map_err(|e| e.to_string())? {
         AppType::Claude => config::get_claude_config_dir(),
+        AppType::ClaudeCn => config::get_claude_cn_config_dir(),
         AppType::ClaudeDesktop => {
             crate::claude_desktop_config::get_config_library_path().map_err(|e| e.to_string())?
         }
@@ -154,6 +162,7 @@ pub async fn get_config_dir(app: String) -> Result<String, String> {
 pub async fn open_config_folder(handle: AppHandle, app: String) -> Result<bool, String> {
     let config_dir = match AppType::from_str(&app).map_err(|e| e.to_string())? {
         AppType::Claude => config::get_claude_config_dir(),
+        AppType::ClaudeCn => config::get_claude_cn_config_dir(),
         AppType::ClaudeDesktop => {
             crate::claude_desktop_config::get_config_library_path().map_err(|e| e.to_string())?
         }

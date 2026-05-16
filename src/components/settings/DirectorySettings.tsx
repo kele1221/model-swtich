@@ -15,6 +15,7 @@ interface DirectorySettingsProps {
   onBrowseAppConfig: () => Promise<void>;
   onResetAppConfig: () => Promise<void>;
   claudeDir?: string;
+  claudeCnDir?: string;
   codexDir?: string;
   geminiDir?: string;
   opencodeDir?: string;
@@ -32,6 +33,7 @@ export function DirectorySettings({
   onBrowseAppConfig,
   onResetAppConfig,
   claudeDir,
+  claudeCnDir,
   codexDir,
   geminiDir,
   opencodeDir,
@@ -102,6 +104,17 @@ export function DirectorySettings({
           onChange={(val) => onDirectoryChange("claude", val)}
           onBrowse={() => onBrowseDirectory("claude")}
           onReset={() => onResetDirectory("claude")}
+        />
+
+        <DirectoryInput
+          label={t("settings.claudeCnConfigDir")}
+          description={undefined}
+          value={claudeCnDir}
+          resolvedValue={resolvedDirs["claude-cn"]}
+          placeholder={t("settings.browsePlaceholderClaudeCn")}
+          onChange={(val) => onDirectoryChange("claude-cn", val)}
+          onBrowse={() => onBrowseDirectory("claude-cn")}
+          onReset={() => onResetDirectory("claude-cn")}
         />
 
         <DirectoryInput

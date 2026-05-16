@@ -8,6 +8,7 @@ import type { SettingsFormState } from "./useSettingsForm";
 export type DirectoryAppId = Exclude<AppId, "claude-desktop">;
 type AppDirectoryKey =
   | "claude"
+  | "claude-cn"
   | "codex"
   | "gemini"
   | "opencode"
@@ -18,6 +19,7 @@ type DirectoryKey = "appConfig" | AppDirectoryKey;
 export interface ResolvedDirectories {
   appConfig: string;
   claude: string;
+  "claude-cn": string;
   codex: string;
   gemini: string;
   opencode: string;
@@ -31,6 +33,7 @@ const APP_DIRECTORY_META: Record<
   { key: AppDirectoryKey; defaultFolder: string }
 > = {
   claude: { key: "claude", defaultFolder: ".claude" },
+  "claude-cn": { key: "claude-cn", defaultFolder: ".claude-cn" },
   codex: { key: "codex", defaultFolder: ".codex" },
   gemini: { key: "gemini", defaultFolder: ".gemini" },
   opencode: { key: "opencode", defaultFolder: ".config/opencode" },
@@ -43,6 +46,7 @@ const DIRECTORY_KEY_TO_SETTINGS_FIELD: Record<
   keyof SettingsFormState
 > = {
   claude: "claudeConfigDir",
+  "claude-cn": "claudeCnConfigDir",
   codex: "codexConfigDir",
   gemini: "geminiConfigDir",
   opencode: "opencodeConfigDir",
@@ -128,6 +132,7 @@ export function useDirectorySettings({
   const [resolvedDirs, setResolvedDirs] = useState<ResolvedDirectories>({
     appConfig: "",
     claude: "",
+    "claude-cn": "",
     codex: "",
     gemini: "",
     opencode: "",
@@ -139,6 +144,7 @@ export function useDirectorySettings({
   const defaultsRef = useRef<ResolvedDirectories>({
     appConfig: "",
     claude: "",
+    "claude-cn": "",
     codex: "",
     gemini: "",
     opencode: "",
@@ -157,6 +163,7 @@ export function useDirectorySettings({
         const [
           overrideRaw,
           claudeDir,
+          claudeCnDir,
           codexDir,
           geminiDir,
           opencodeDir,
@@ -164,6 +171,7 @@ export function useDirectorySettings({
           hermesDir,
           defaultAppConfig,
           defaultClaudeDir,
+          defaultClaudeCnDir,
           defaultCodexDir,
           defaultGeminiDir,
           defaultOpencodeDir,
@@ -172,6 +180,7 @@ export function useDirectorySettings({
         ] = await Promise.all([
           settingsApi.getAppConfigDirOverride(),
           settingsApi.getConfigDir("claude"),
+          settingsApi.getConfigDir("claude-cn"),
           settingsApi.getConfigDir("codex"),
           settingsApi.getConfigDir("gemini"),
           settingsApi.getConfigDir("opencode"),
@@ -179,6 +188,7 @@ export function useDirectorySettings({
           settingsApi.getConfigDir("hermes"),
           computeDefaultAppConfigDir(),
           computeDefaultConfigDir("claude"),
+          computeDefaultConfigDir("claude-cn"),
           computeDefaultConfigDir("codex"),
           computeDefaultConfigDir("gemini"),
           computeDefaultConfigDir("opencode"),
@@ -193,6 +203,7 @@ export function useDirectorySettings({
         defaultsRef.current = {
           appConfig: defaultAppConfig ?? "",
           claude: defaultClaudeDir ?? "",
+          "claude-cn": defaultClaudeCnDir ?? "",
           codex: defaultCodexDir ?? "",
           gemini: defaultGeminiDir ?? "",
           opencode: defaultOpencodeDir ?? "",
@@ -206,6 +217,7 @@ export function useDirectorySettings({
         setResolvedDirs({
           appConfig: normalizedOverride ?? defaultsRef.current.appConfig,
           claude: claudeDir || defaultsRef.current.claude,
+          "claude-cn": claudeCnDir || defaultsRef.current["claude-cn"],
           codex: codexDir || defaultsRef.current.codex,
           gemini: geminiDir || defaultsRef.current.gemini,
           opencode: opencodeDir || defaultsRef.current.opencode,
@@ -347,6 +359,7 @@ export function useDirectorySettings({
         appConfig:
           initialAppConfigDirRef.current ?? defaultsRef.current.appConfig,
         claude: overrides?.claude ?? defaultsRef.current.claude,
+        "claude-cn": overrides?.["claude-cn"] ?? defaultsRef.current["claude-cn"],
         codex: overrides?.codex ?? defaultsRef.current.codex,
         gemini: overrides?.gemini ?? defaultsRef.current.gemini,
         opencode: overrides?.opencode ?? defaultsRef.current.opencode,

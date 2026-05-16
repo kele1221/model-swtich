@@ -29,6 +29,13 @@ pub struct VisibleApps {
     #[serde(default = "default_true")]
     pub claude: bool,
     #[serde(
+        rename = "claude-cn",
+        alias = "claudeCn",
+        alias = "claude_cn",
+        default = "default_true"
+    )]
+    pub claude_cn: bool,
+    #[serde(
         rename = "claude-desktop",
         alias = "claudeDesktop",
         alias = "claude_desktop",
@@ -51,6 +58,7 @@ impl Default for VisibleApps {
     fn default() -> Self {
         Self {
             claude: true,
+            claude_cn: true,
             claude_desktop: true,
             codex: true,
             gemini: true,
@@ -66,6 +74,7 @@ impl VisibleApps {
     pub fn is_visible(&self, app: &AppType) -> bool {
         match app {
             AppType::Claude => self.claude,
+            AppType::ClaudeCn => self.claude_cn,
             AppType::ClaudeDesktop => self.claude_desktop,
             AppType::Codex => self.codex,
             AppType::Gemini => self.gemini,
@@ -237,6 +246,8 @@ pub struct AppSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claude_config_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claude_cn_config_dir: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub codex_config_dir: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gemini_config_dir: Option<String>,
@@ -251,6 +262,9 @@ pub struct AppSettings {
     /// 当前 Claude 供应商 ID（本地存储，优先于数据库 is_current）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_provider_claude: Option<String>,
+    /// 当前 Claude CN 供应商 ID（本地存储，优先于数据库 is_current）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub current_provider_claude_cn: Option<String>,
     /// 当前 Claude Desktop 供应商 ID（本地存储，优先于数据库 is_current）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub current_provider_claude_desktop: Option<String>,
@@ -332,12 +346,14 @@ impl Default for AppSettings {
             language: None,
             visible_apps: None,
             claude_config_dir: None,
+            claude_cn_config_dir: None,
             codex_config_dir: None,
             gemini_config_dir: None,
             opencode_config_dir: None,
             openclaw_config_dir: None,
             hermes_config_dir: None,
             current_provider_claude: None,
+            current_provider_claude_cn: None,
             current_provider_claude_desktop: None,
             current_provider_codex: None,
             current_provider_gemini: None,
@@ -368,6 +384,13 @@ impl AppSettings {
     fn normalize_paths(&mut self) {
         self.claude_config_dir = self
             .claude_config_dir
+            .as_ref()
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+
+        self.claude_cn_config_dir = self
+            .claude_cn_config_dir
             .as_ref()
             .map(|s| s.trim())
             .filter(|s| !s.is_empty())
@@ -576,6 +599,14 @@ pub fn get_claude_override_dir() -> Option<PathBuf> {
         .map(|p| resolve_override_path(p))
 }
 
+pub fn get_claude_cn_override_dir() -> Option<PathBuf> {
+    let settings = settings_store().read().ok()?;
+    settings
+        .claude_cn_config_dir
+        .as_ref()
+        .map(|p| resolve_override_path(p))
+}
+
 pub fn get_codex_override_dir() -> Option<PathBuf> {
     let settings = settings_store().read().ok()?;
     settings
@@ -626,6 +657,7 @@ pub fn get_current_provider(app_type: &AppType) -> Option<String> {
     let settings = settings_store().read().ok()?;
     match app_type {
         AppType::Claude => settings.current_provider_claude.clone(),
+        AppType::ClaudeCn => settings.current_provider_claude_cn.clone(),
         AppType::ClaudeDesktop => settings.current_provider_claude_desktop.clone(),
         AppType::Codex => settings.current_provider_codex.clone(),
         AppType::Gemini => settings.current_provider_gemini.clone(),
@@ -643,6 +675,7 @@ pub fn set_current_provider(app_type: &AppType, id: Option<&str>) -> Result<(), 
     let id_owned = id.map(|s| s.to_string());
     mutate_settings(|settings| match app_type {
         AppType::Claude => settings.current_provider_claude = id_owned.clone(),
+        AppType::ClaudeCn => settings.current_provider_claude_cn = id_owned.clone(),
         AppType::ClaudeDesktop => settings.current_provider_claude_desktop = id_owned.clone(),
         AppType::Codex => settings.current_provider_codex = id_owned.clone(),
         AppType::Gemini => settings.current_provider_gemini = id_owned.clone(),

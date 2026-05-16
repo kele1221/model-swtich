@@ -4,6 +4,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use crate::app_config::AppType;
 use crate::error::AppError;
 
 /// 获取用户主目录，带回退和日志
@@ -84,6 +85,32 @@ pub fn get_claude_settings_path() -> PathBuf {
     }
     // 默认新建：回落到标准文件名 settings.json（不再生成 claude.json）
     settings
+}
+
+/// 获取 Claude CN 配置目录路径
+pub fn get_claude_cn_config_dir() -> PathBuf {
+    if let Some(custom) = crate::settings::get_claude_cn_override_dir() {
+        return custom;
+    }
+
+    get_home_dir().join(".claude-cn")
+}
+
+/// 获取 Claude CN 主配置文件路径
+pub fn get_claude_cn_settings_path() -> PathBuf {
+    get_claude_cn_config_dir().join("settings.json")
+}
+
+/// 根据 app type 返回对应的 Claude-like settings 路径
+pub fn get_claude_like_settings_path(app_type: &AppType) -> Result<PathBuf, AppError> {
+    match app_type {
+        AppType::Claude => Ok(get_claude_settings_path()),
+        AppType::ClaudeCn => Ok(get_claude_cn_settings_path()),
+        other => Err(AppError::Config(format!(
+            "not a Claude-like app: {}",
+            other.as_str()
+        ))),
+    }
 }
 
 /// 获取应用配置目录路径 (~/.cc-switch)

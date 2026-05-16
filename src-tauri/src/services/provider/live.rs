@@ -11,7 +11,10 @@ use crate::app_config::AppType;
 use crate::codex_config::{
     get_codex_auth_path, get_codex_config_path, write_codex_live_atomic_with_stable_provider,
 };
-use crate::config::{delete_file, get_claude_settings_path, read_json_file, write_json_file};
+use crate::config::{
+    delete_file, get_claude_like_settings_path, get_claude_settings_path, read_json_file,
+    write_json_file,
+};
 use crate::database::Database;
 use crate::error::AppError;
 use crate::provider::Provider;
@@ -315,7 +318,7 @@ fn settings_contain_common_config(app_type: &AppType, settings: &Value, snippet:
     }
 
     match app_type {
-        AppType::Claude => match serde_json::from_str::<Value>(trimmed) {
+        AppType::Claude | AppType::ClaudeCn => match serde_json::from_str::<Value>(trimmed) {
             Ok(source) if source.is_object() => json_is_subset(settings, &source),
             _ => false,
         },
@@ -381,7 +384,7 @@ pub(crate) fn remove_common_config_from_settings(
     }
 
     match app_type {
-        AppType::Claude => {
+        AppType::Claude | AppType::ClaudeCn => {
             let source = serde_json::from_str::<Value>(trimmed)
                 .map_err(|e| AppError::Message(format!("Invalid Claude common config: {e}")))?;
             let mut result = settings.clone();
@@ -436,7 +439,7 @@ fn apply_common_config_to_settings(
     }
 
     match app_type {
-        AppType::Claude => {
+        AppType::Claude | AppType::ClaudeCn => {
             let source = serde_json::from_str::<Value>(trimmed)
                 .map_err(|e| AppError::Message(format!("Invalid Claude common config: {e}")))?;
             let mut result = settings.clone();
@@ -708,8 +711,8 @@ impl LiveSnapshot {
 /// Write live configuration snapshot for a provider
 pub(crate) fn write_live_snapshot(app_type: &AppType, provider: &Provider) -> Result<(), AppError> {
     match app_type {
-        AppType::Claude => {
-            let path = get_claude_settings_path();
+        AppType::Claude | AppType::ClaudeCn => {
+            let path = get_claude_like_settings_path(app_type)?;
             let settings = sanitize_claude_settings_for_live(&provider.settings_config);
             write_json_file(&path, &settings)?;
         }
@@ -963,8 +966,8 @@ pub fn read_live_settings(app_type: AppType) -> Result<Value, AppError> {
             let cfg_text = crate::codex_config::read_and_validate_codex_config_text()?;
             Ok(json!({ "auth": auth, "config": cfg_text }))
         }
-        AppType::Claude => {
-            let path = get_claude_settings_path();
+        AppType::Claude | AppType::ClaudeCn => {
+            let path = get_claude_like_settings_path(&app_type)?;
             if !path.exists() {
                 return Err(AppError::localized(
                     "claude.live.missing",
@@ -1091,8 +1094,8 @@ pub fn import_default_config(state: &AppState, app_type: AppType) -> Result<bool
             let config_str = crate::codex_config::read_and_validate_codex_config_text()?;
             json!({ "auth": auth, "config": config_str })
         }
-        AppType::Claude => {
-            let settings_path = get_claude_settings_path();
+        AppType::Claude | AppType::ClaudeCn => {
+            let settings_path = get_claude_like_settings_path(&app_type)?;
             if !settings_path.exists() {
                 return Err(AppError::localized(
                     "claude.live.missing",

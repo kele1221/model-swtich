@@ -638,6 +638,7 @@ command = "echo"
             }),
             apps: cc_switch_lib::McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: false, // 初始未启用
                 gemini: false,
                 opencode: false,
@@ -767,6 +768,7 @@ fn import_from_claude_merges_into_config() {
             }),
             apps: cc_switch_lib::McpApps {
                 claude: false, // 初始未启用
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,

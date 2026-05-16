@@ -224,6 +224,7 @@ command = "echo"
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: true,
                 gemini: false,
                 opencode: false,
@@ -318,6 +319,7 @@ fn set_mcp_enabled_for_codex_writes_live_config() {
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: false, // 初始未启用
                 gemini: false,
                 opencode: false,
@@ -383,6 +385,7 @@ fn enabling_codex_mcp_skips_when_codex_dir_missing() {
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,
@@ -428,6 +431,7 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
             }),
             apps: McpApps {
                 claude: true,
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,
@@ -462,6 +466,7 @@ fn upsert_mcp_server_disabling_app_removes_from_claude_live_config() {
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,
@@ -595,6 +600,7 @@ fn enabling_gemini_mcp_skips_when_gemini_dir_missing() {
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,
@@ -650,6 +656,7 @@ fn enabling_claude_mcp_skips_when_claude_config_absent() {
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,
@@ -711,6 +718,7 @@ fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() 
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,
@@ -733,6 +741,7 @@ fn sync_all_enabled_removes_known_disabled_but_preserves_unknown_live_entries() 
             }),
             apps: McpApps {
                 claude: true,
+                claude_cn: false,
                 codex: false,
                 gemini: false,
                 opencode: false,

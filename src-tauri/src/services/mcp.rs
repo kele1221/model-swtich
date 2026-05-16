@@ -112,6 +112,9 @@ impl McpService {
             AppType::Claude => {
                 mcp::sync_single_server_to_claude(&Default::default(), &server.id, &server.server)?;
             }
+            AppType::ClaudeCn => {
+                log::debug!("Claude CN MCP not supported in first stage, skipping sync");
+            }
             AppType::ClaudeDesktop => {
                 log::debug!("Claude Desktop 3P profiles do not use CC Switch MCP sync, skipping");
             }
@@ -157,6 +160,9 @@ impl McpService {
     fn remove_server_from_app(_state: &AppState, id: &str, app: &AppType) -> Result<(), AppError> {
         match app {
             AppType::Claude => mcp::remove_server_from_claude(id)?,
+            AppType::ClaudeCn => {
+                log::debug!("Claude CN MCP not supported in first stage, skipping remove");
+            }
             AppType::ClaudeDesktop => {
                 log::debug!("Claude Desktop 3P profiles do not use CC Switch MCP sync, skipping");
             }
@@ -181,7 +187,10 @@ impl McpService {
         let servers = Self::get_all_servers(state)?;
 
         for app in AppType::all() {
-            if matches!(app, AppType::OpenClaw | AppType::ClaudeDesktop) {
+            if matches!(
+                app,
+                AppType::ClaudeCn | AppType::OpenClaw | AppType::ClaudeDesktop
+            ) {
                 continue;
             }
 

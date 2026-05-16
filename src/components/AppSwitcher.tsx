@@ -20,6 +20,7 @@ interface AppSwitcherProps {
 
 const ALL_APPS: AppId[] = [
   "claude",
+  "claude-cn",
   "claude-desktop",
   "codex",
   "gemini",
@@ -43,6 +44,7 @@ export function AppSwitcher({
   const iconSize = 20;
   const appIconName: Record<AppId, string> = {
     claude: "claude",
+    "claude-cn": "claude",
     "claude-desktop": "claude",
     codex: "openai",
     gemini: "gemini",
@@ -52,6 +54,7 @@ export function AppSwitcher({
   };
   const appDisplayName: Record<AppId, string> = {
     claude: "Claude Code",
+    "claude-cn": "Claude CN",
     "claude-desktop": "Claude Desktop",
     codex: "Codex",
     gemini: "Gemini",

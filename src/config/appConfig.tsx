@@ -17,6 +17,7 @@ export interface AppConfig {
 
 export const APP_IDS: AppId[] = [
   "claude",
+  "claude-cn",
   "claude-desktop",
   "codex",
   "gemini",
@@ -45,6 +46,14 @@ export const APP_ICON_MAP: Record<AppId, AppConfig> = {
       "bg-orange-500/10 ring-1 ring-orange-500/20 hover:bg-orange-500/20 text-orange-600 dark:text-orange-400",
     badgeClass:
       "bg-orange-500/10 text-orange-700 dark:text-orange-300 hover:bg-orange-500/20 border-0 gap-1.5",
+  },
+  "claude-cn": {
+    label: "Claude CN",
+    icon: <ClaudeIcon size={14} />,
+    activeClass:
+      "bg-cyan-500/10 ring-1 ring-cyan-500/20 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400",
+    badgeClass:
+      "bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 hover:bg-cyan-500/20 border-0 gap-1.5",
   },
   "claude-desktop": {
     label: "Claude Desktop",

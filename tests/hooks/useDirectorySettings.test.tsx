@@ -66,11 +66,13 @@ describe("useDirectorySettings", () => {
     getAppConfigDirOverrideMock.mockResolvedValue(null);
     getConfigDirMock.mockImplementation(async (app: string) => {
       if (app === "claude") return "/remote/claude";
+      if (app === "claude-cn") return "/remote/claude-cn";
       if (app === "codex") return "/remote/codex";
       if (app === "gemini") return "/remote/gemini";
       if (app === "opencode") return "/remote/opencode";
       if (app === "openclaw") return "/remote/openclaw";
-      return "/remote/hermes";
+      if (app === "hermes") return "/remote/hermes";
+      return "/remote/unknown";
     });
     selectConfigDirectoryMock.mockReset();
   });
@@ -88,6 +90,7 @@ describe("useDirectorySettings", () => {
     expect(result.current.resolvedDirs).toEqual({
       appConfig: "/override/app",
       claude: "/remote/claude",
+      "claude-cn": "/remote/claude-cn",
       codex: "/remote/codex",
       gemini: "/remote/gemini",
       opencode: "/remote/opencode",

@@ -14,6 +14,7 @@ export type AppType =
 /** Skill 应用启用状态 */
 export interface SkillApps {
   claude: boolean;
+  "claude-cn"?: boolean;
   "claude-desktop"?: boolean;
   codex: boolean;
   gemini: boolean;

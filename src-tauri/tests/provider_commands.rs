@@ -2,7 +2,8 @@ use serde_json::json;
 use std::path::{Path, PathBuf};
 
 use cc_switch_lib::{
-    get_codex_auth_path, get_codex_config_path, import_default_config_test_hook, read_json_file,
+    get_claude_cn_settings_path, get_claude_settings_path, get_codex_auth_path,
+    get_codex_config_path, import_default_config_test_hook, read_json_file,
     switch_provider_test_hook, write_codex_live_atomic, AppError, AppType, McpApps, McpServer,
     MultiAppConfig, Provider, ProviderService,
 };
@@ -204,6 +205,7 @@ command = "say"
             }),
             apps: McpApps {
                 claude: false,
+                claude_cn: false,
                 codex: true, // 启用 Codex
                 gemini: false,
                 opencode: false,
@@ -488,5 +490,145 @@ fn switch_provider_codex_missing_auth_returns_error_and_keeps_state() {
     assert!(
         current_id.is_none() || current_id.as_deref() == Some("invalid"),
         "current provider should remain empty or be the attempted id on failure, got: {current_id:?}"
+    );
+}
+
+#[test]
+fn claude_and_claude_cn_live_settings_paths_are_isolated() {
+    let _guard = test_mutex().lock().expect("acquire test mutex");
+    reset_test_fs();
+    let _home = ensure_test_home();
+
+    let claude_settings_path = get_claude_settings_path();
+    let claude_cn_settings_path = get_claude_cn_settings_path();
+
+    // Ensure parent dirs exist
+    if let Some(parent) = claude_settings_path.parent() {
+        std::fs::create_dir_all(parent).expect("create claude settings dir");
+    }
+    if let Some(parent) = claude_cn_settings_path.parent() {
+        std::fs::create_dir_all(parent).expect("create claude-cn settings dir");
+    }
+
+    // Seed both providers into the same MultiAppConfig under different app namespaces
+    let mut config = MultiAppConfig::default();
+    {
+        let claude_mgr = config
+            .get_manager_mut(&AppType::Claude)
+            .expect("claude manager");
+        claude_mgr.current = "claude-p1".to_string();
+        claude_mgr.providers.insert(
+            "claude-p1".to_string(),
+            Provider::with_id(
+                "claude-p1".to_string(),
+                "Claude Provider".to_string(),
+                json!({
+                    "env": {
+                        "ANTHROPIC_AUTH_TOKEN": "claude-token",
+                        "ANTHROPIC_BASE_URL": "https://claude.example"
+                    }
+                }),
+                None,
+            ),
+        );
+    }
+    {
+        let cn_mgr = config
+            .get_manager_mut(&AppType::ClaudeCn)
+            .expect("claude-cn manager");
+        cn_mgr.current = "cn-p1".to_string();
+        cn_mgr.providers.insert(
+            "cn-p1".to_string(),
+            Provider::with_id(
+                "cn-p1".to_string(),
+                "Claude CN Provider".to_string(),
+                json!({
+                    "env": {
+                        "ANTHROPIC_AUTH_TOKEN": "cn-token",
+                        "ANTHROPIC_BASE_URL": "https://cn.example"
+                    }
+                }),
+                None,
+            ),
+        );
+    }
+
+    let app_state = create_test_state_with_config(&config).expect("create test state");
+
+    // Act: switch Claude provider
+    switch_provider_test_hook(&app_state, AppType::Claude, "claude-p1")
+        .expect("switch claude provider");
+
+    // Act: switch Claude CN provider
+    switch_provider_test_hook(&app_state, AppType::ClaudeCn, "cn-p1")
+        .expect("switch claude-cn provider");
+
+    // Assert: Claude settings.json contains Claude provider data
+    let claude_live: serde_json::Value =
+        read_json_file(&claude_settings_path).expect("read claude live");
+    assert_eq!(
+        claude_live
+            .get("env")
+            .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
+            .and_then(|t| t.as_str()),
+        Some("claude-token"),
+        "claude settings.json must contain claude provider token"
+    );
+
+    // Assert: Claude CN settings.json contains Claude CN provider data
+    let cn_live: serde_json::Value =
+        read_json_file(&claude_cn_settings_path).expect("read claude-cn live");
+    assert_eq!(
+        cn_live
+            .get("env")
+            .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
+            .and_then(|t| t.as_str()),
+        Some("cn-token"),
+        "claude-cn settings.json must contain cn provider token"
+    );
+
+    // Assert: Claude settings.json does NOT contain Claude CN token
+    let claude_token: String = claude_live
+        .get("env")
+        .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
+        .and_then(|t| t.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    assert_ne!(
+        claude_token, "cn-token",
+        "claude settings.json must not contain cn token"
+    );
+
+    // Assert: Claude CN settings.json does NOT contain Claude token
+    let cn_token: String = cn_live
+        .get("env")
+        .and_then(|env| env.get("ANTHROPIC_AUTH_TOKEN"))
+        .and_then(|t| t.as_str())
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    assert_ne!(
+        cn_token, "claude-token",
+        "claude-cn settings.json must not contain claude token"
+    );
+
+    // Assert: current provider IDs are tracked independently
+    let claude_current = app_state
+        .db
+        .get_current_provider(AppType::Claude.as_str())
+        .expect("get claude current");
+    assert_eq!(
+        claude_current.as_deref(),
+        Some("claude-p1"),
+        "claude current provider must be claude-p1"
+    );
+
+    let cn_current = app_state
+        .db
+        .get_current_provider(AppType::ClaudeCn.as_str())
+        .expect("get claude-cn current");
+    assert_eq!(
+        cn_current.as_deref(),
+        Some("cn-p1"),
+        "claude-cn current provider must be cn-p1"
     );
 }
