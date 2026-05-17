@@ -220,18 +220,29 @@ impl ProxyService {
 
     pub async fn sync_claude_live_from_provider_while_proxy_active(
         &self,
+        app_type: &AppType,
         provider: &Provider,
     ) -> Result<(), String> {
-        let mut effective_settings = build_effective_settings_with_common_config(
-            self.db.as_ref(),
-            &AppType::Claude,
-            provider,
-        )
-        .map_err(|e| format!("构建 claude 有效配置失败: {e}"))?;
+        if !matches!(app_type, AppType::Claude | AppType::ClaudeCn) {
+            return Err(format!("not a Claude-like app: {}", app_type.as_str()));
+        }
+
+        let mut effective_settings =
+            build_effective_settings_with_common_config(self.db.as_ref(), app_type, provider)
+                .map_err(|e| format!("构建 {} 有效配置失败: {e}", app_type.as_str()))?;
         let (proxy_url, _) = self.build_proxy_urls().await?;
+        let proxy_url = match app_type {
+            AppType::Claude => proxy_url,
+            AppType::ClaudeCn => format!("{}/claude-cn", proxy_url.trim_end_matches('/')),
+            _ => unreachable!("validated above"),
+        };
 
         Self::apply_claude_takeover_fields(&mut effective_settings, &proxy_url);
-        self.write_claude_live(&effective_settings)?;
+        match app_type {
+            AppType::Claude => self.write_claude_live(&effective_settings)?,
+            AppType::ClaudeCn => self.write_claude_cn_live(&effective_settings)?,
+            _ => unreachable!("validated above"),
+        }
         Ok(())
     }
 
@@ -1753,7 +1764,7 @@ impl ProxyService {
         }
 
         let backup_json = match app_type_enum {
-            AppType::Claude => serde_json::to_string(&effective_settings)
+            AppType::Claude | AppType::ClaudeCn => serde_json::to_string(&effective_settings)
                 .map_err(|e| format!("序列化 Claude 配置失败: {e}"))?,
             AppType::Codex => serde_json::to_string(&effective_settings)
                 .map_err(|e| format!("序列化 Codex 配置失败: {e}"))?,
@@ -1827,8 +1838,8 @@ impl ProxyService {
             self.update_live_backup_from_provider_inner(app_type, &provider)
                 .await?;
 
-            if matches!(app_type_enum, AppType::Claude) {
-                self.sync_claude_live_from_provider_while_proxy_active(&provider)
+            if matches!(app_type_enum, AppType::Claude | AppType::ClaudeCn) {
+                self.sync_claude_live_from_provider_while_proxy_active(&app_type_enum, &provider)
                     .await?;
             }
         }

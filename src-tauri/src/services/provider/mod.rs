@@ -55,10 +55,12 @@ pub struct SwitchResult {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
+    use crate::config::{
+        get_claude_cn_settings_path, get_claude_settings_path, read_json_file, write_json_file,
+    };
     use crate::database::Database;
     use crate::provider::ProviderMeta;
-    use crate::proxy::types::ProxyConfig;
+    use crate::proxy::types::{GlobalProxyConfig, ProxyConfig};
     use crate::store::AppState;
     use serde_json::json;
     use serial_test::serial;
@@ -387,6 +389,14 @@ base_url = "http://localhost:8080"
         })
         .await
         .expect("update proxy config");
+        db.update_global_proxy_config(GlobalProxyConfig {
+            proxy_enabled: true,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            enable_logging: false,
+        })
+        .await
+        .expect("update global proxy config");
         {
             let mut config = db
                 .get_proxy_config_for_app("claude")
@@ -460,18 +470,232 @@ base_url = "http://localhost:8080"
             Some("PROXY_MANAGED"),
             "takeover placeholder should stay intact"
         );
-        assert_eq!(
-            live.get("env")
-                .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
-                .and_then(|v| v.as_str()),
-            Some("http://127.0.0.1:15721"),
-            "proxy base URL should stay intact"
+        let base_url = live
+            .get("env")
+            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
+            .and_then(|v| v.as_str())
+            .expect("claude proxy base URL");
+        assert!(
+            base_url.starts_with("http://127.0.0.1:") && !base_url.ends_with("/claude-cn"),
+            "Claude live base URL should use the normal proxy route, got {base_url}"
         );
         assert!(
             live.get("env")
                 .and_then(|env| env.get("ANTHROPIC_MODEL"))
                 .is_none(),
             "model override should be removed in takeover live config"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn update_current_claude_cn_provider_syncs_cn_live_during_proxy_takeover() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let state = AppState::new(db.clone());
+
+        let original = Provider::with_id(
+            "cn-p1".into(),
+            "Claude CN A".into(),
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "token-a",
+                    "ANTHROPIC_BASE_URL": "https://cn.a.example",
+                    "ANTHROPIC_MODEL": "model-a"
+                },
+                "permissions": { "allow": ["Bash"] }
+            }),
+            None,
+        );
+        db.save_provider("claude-cn", &original)
+            .expect("save claude-cn provider");
+        db.set_current_provider("claude-cn", "cn-p1")
+            .expect("set claude-cn current provider");
+        crate::settings::set_current_provider(&AppType::ClaudeCn, Some("cn-p1"))
+            .expect("set local claude-cn current provider");
+
+        db.update_proxy_config(ProxyConfig {
+            live_takeover_active: true,
+            ..Default::default()
+        })
+        .await
+        .expect("update proxy config");
+        db.update_global_proxy_config(GlobalProxyConfig {
+            proxy_enabled: true,
+            listen_address: "127.0.0.1".to_string(),
+            listen_port: 0,
+            enable_logging: false,
+        })
+        .await
+        .expect("update global proxy config");
+        {
+            let mut config = db
+                .get_proxy_config_for_app("claude-cn")
+                .await
+                .expect("get claude-cn proxy config");
+            config.enabled = true;
+            db.update_proxy_config_for_app(config)
+                .await
+                .expect("update claude-cn proxy config");
+        }
+
+        write_json_file(
+            &get_claude_cn_settings_path(),
+            &json!({
+                "env": {
+                    "ANTHROPIC_BASE_URL": "http://127.0.0.1:15721/claude-cn",
+                    "ANTHROPIC_API_KEY": "PROXY_MANAGED",
+                    "ANTHROPIC_MODEL": "stale-model"
+                },
+                "permissions": { "allow": ["Bash"] }
+            }),
+        )
+        .expect("seed taken-over claude-cn live file");
+
+        state
+            .proxy_service
+            .start()
+            .await
+            .expect("start proxy service");
+
+        let updated = Provider::with_id(
+            "cn-p1".into(),
+            "Claude CN A".into(),
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "token-updated",
+                    "ANTHROPIC_BASE_URL": "https://cn.updated.example",
+                    "ANTHROPIC_MODEL": "model-updated"
+                },
+                "permissions": { "allow": ["Read"] }
+            }),
+            None,
+        );
+
+        ProviderService::update(&state, AppType::ClaudeCn, None, updated.clone())
+            .expect("update current claude-cn provider");
+
+        let backup = db
+            .get_live_backup("claude-cn")
+            .await
+            .expect("get claude-cn live backup")
+            .expect("claude-cn backup exists");
+        let stored_provider = db
+            .get_provider_by_id("cn-p1", "claude-cn")
+            .expect("get stored claude-cn provider")
+            .expect("stored claude-cn provider exists");
+        let expected_backup =
+            serde_json::to_string(&stored_provider.settings_config).expect("serialize");
+        assert_eq!(backup.original_config, expected_backup);
+
+        let live: Value = read_json_file(&get_claude_cn_settings_path()).expect("read cn live");
+        assert_eq!(
+            live.get("permissions"),
+            updated.settings_config.get("permissions"),
+            "provider edits should propagate into Claude CN live config during takeover"
+        );
+        assert_eq!(
+            live.get("env")
+                .and_then(|env| env.get("ANTHROPIC_API_KEY"))
+                .and_then(|v| v.as_str()),
+            Some("PROXY_MANAGED"),
+            "takeover placeholder should stay intact"
+        );
+        let base_url = live
+            .get("env")
+            .and_then(|env| env.get("ANTHROPIC_BASE_URL"))
+            .and_then(|v| v.as_str())
+            .expect("claude-cn proxy base URL");
+        assert!(
+            base_url.ends_with("/claude-cn"),
+            "claude-cn live base URL must keep the route prefix, got {base_url}"
+        );
+        assert_eq!(
+            live.get("env")
+                .and_then(|env| env.get("ANTHROPIC_DEFAULT_SONNET_MODEL"))
+                .and_then(|v| v.as_str()),
+            Some("claude-sonnet-4-6"),
+            "takeover live config should expose a stable Claude-safe sonnet alias"
+        );
+        assert_eq!(
+            live.get("env")
+                .and_then(|env| env.get("ANTHROPIC_DEFAULT_SONNET_MODEL_NAME"))
+                .and_then(|v| v.as_str()),
+            Some("model-updated"),
+            "Claude CN model display name should reflect the edited provider model"
+        );
+        assert!(
+            !get_claude_settings_path().exists(),
+            "updating claude-cn must not write the normal Claude live config"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn update_current_claude_cn_provider_writes_independent_cn_live_config() {
+        let _home = TempHome::new();
+        crate::settings::reload_settings().expect("reload settings");
+
+        let db = Arc::new(Database::memory().expect("init db"));
+        let state = AppState::new(db.clone());
+
+        let original = Provider::with_id(
+            "cn-direct".into(),
+            "Claude CN Direct".into(),
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "token-a",
+                    "ANTHROPIC_BASE_URL": "https://cn.old.example",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "old-model"
+                }
+            }),
+            Some("custom".into()),
+        );
+        db.save_provider("claude-cn", &original)
+            .expect("save claude-cn provider");
+        db.set_current_provider("claude-cn", "cn-direct")
+            .expect("set claude-cn current provider");
+        crate::settings::set_current_provider(&AppType::ClaudeCn, Some("cn-direct"))
+            .expect("set local claude-cn current provider");
+
+        let updated = Provider::with_id(
+            "cn-direct".into(),
+            "Claude CN Direct".into(),
+            json!({
+                "env": {
+                    "ANTHROPIC_API_KEY": "token-updated",
+                    "ANTHROPIC_BASE_URL": "https://cn.new.example",
+                    "ANTHROPIC_DEFAULT_SONNET_MODEL": "new-model",
+                    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "new-haiku"
+                },
+                "permissions": { "allow": ["Read"] }
+            }),
+            Some("custom".into()),
+        );
+
+        ProviderService::update(&state, AppType::ClaudeCn, None, updated.clone())
+            .expect("update current claude-cn provider");
+
+        let live: Value = read_json_file(&get_claude_cn_settings_path()).expect("read cn live");
+        assert_eq!(
+            live.pointer("/env/ANTHROPIC_BASE_URL")
+                .and_then(Value::as_str),
+            Some("https://cn.new.example")
+        );
+        assert_eq!(
+            live.pointer("/env/ANTHROPIC_DEFAULT_SONNET_MODEL")
+                .and_then(Value::as_str),
+            Some("new-model")
+        );
+        assert_eq!(
+            live.pointer("/permissions/allow/0").and_then(Value::as_str),
+            Some("Read")
+        );
+        assert!(
+            !get_claude_settings_path().exists(),
+            "direct Claude CN sync must not write the normal Claude live config"
         );
     }
 
@@ -1255,7 +1479,9 @@ impl ProviderService {
                     futures::executor::block_on(
                         state
                             .proxy_service
-                            .sync_claude_live_from_provider_while_proxy_active(&provider),
+                            .sync_claude_live_from_provider_while_proxy_active(
+                                &app_type, &provider,
+                            ),
                     )
                     .map_err(|e| AppError::Message(format!("同步 Claude Live 配置失败: {e}")))?;
                 }

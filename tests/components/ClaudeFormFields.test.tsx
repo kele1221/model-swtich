@@ -45,6 +45,7 @@ const FormShell = ({ children }: PropsWithChildren) => {
 
 const renderCopilotForm = (overrides: Partial<ClaudeFormFieldsProps> = {}) => {
   const props: ClaudeFormFieldsProps = {
+    appId: "claude",
     shouldShowApiKey: false,
     apiKey: "",
     onApiKeyChange: vi.fn(),

@@ -2912,7 +2912,7 @@ dependencies = [
 
 [[package]]
 name = "model-switch"
-version = "3.15.0"
+version = "3.15.1"
 dependencies = [
  "anyhow",
  "arboard",

@@ -205,7 +205,8 @@ function ProviderFormFull({
   const [endpointAutoSelect, setEndpointAutoSelect] = useState<boolean>(
     () => initialData?.meta?.endpointAutoSelect ?? true,
   );
-  const supportsFullUrl = appId === "claude" || appId === "claude-cn" || appId === "codex";
+  const supportsFullUrl =
+    appId === "claude" || appId === "claude-cn" || appId === "codex";
   const [localIsFullUrl, setLocalIsFullUrl] = useState<boolean>(() => {
     if (!supportsFullUrl) return false;
     return initialData?.meta?.isFullUrl ?? false;
@@ -291,6 +292,7 @@ function ProviderFormFull({
     mode: "onSubmit",
   });
   const { isSubmitting } = form.formState;
+  const settingsConfigValue = form.watch("settingsConfig");
 
   const handleSettingsConfigChange = useCallback(
     (config: string) => {
@@ -328,7 +330,7 @@ function ProviderFormFull({
     handleApiKeyChange,
     showApiKey: shouldShowApiKey,
   } = useApiKeyState({
-    initialConfig: form.getValues("settingsConfig"),
+    initialConfig: settingsConfigValue,
     onConfigChange: handleSettingsConfigChange,
     selectedPresetId,
     category,
@@ -342,7 +344,7 @@ function ProviderFormFull({
   const { baseUrl, handleClaudeBaseUrlChange } = useBaseUrlState({
     appType: appId,
     category,
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     codexConfig: "",
     onSettingsConfigChange: handleSettingsConfigChange,
     onCodexConfigChange: () => {},
@@ -358,7 +360,7 @@ function ProviderFormFull({
     defaultOpusModelName,
     handleModelChange,
   } = useModelState({
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     onConfigChange: handleSettingsConfigChange,
   });
 
@@ -516,7 +518,7 @@ function ProviderFormFull({
       appId === "claude" || appId === "claude-cn" ? selectedPresetId : null,
     presetEntries:
       appId === "claude" || appId === "claude-cn" ? presetEntries : [],
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     onConfigChange: handleSettingsConfigChange,
   });
 
@@ -529,7 +531,7 @@ function ProviderFormFull({
     isExtracting: isClaudeExtracting,
     handleExtract: handleClaudeExtract,
   } = useCommonConfigSnippet({
-    settingsConfig: form.getValues("settingsConfig"),
+    settingsConfig: settingsConfigValue,
     onConfigChange: handleSettingsConfigChange,
     initialData:
       appId === "claude" || appId === "claude-cn" ? initialData : undefined,
@@ -1239,8 +1241,7 @@ function ProviderFormFull({
           ? pricingConfig.pricingModelSource
           : undefined,
       apiFormat:
-        (appId === "claude" || appId === "claude-cn") &&
-        category !== "official"
+        (appId === "claude" || appId === "claude-cn") && category !== "official"
           ? localApiFormat
           : undefined,
       apiKeyField:
@@ -1273,7 +1274,7 @@ function ProviderFormFull({
     isPartner: isClaudePartner,
     partnerPromotionKey: claudePartnerPromotionKey,
   } = useApiKeyLink({
-    appId: "claude",
+    appId: appId === "claude-cn" ? "claude-cn" : "claude",
     category,
     selectedPresetId,
     presetEntries,
@@ -1772,11 +1773,12 @@ function ProviderFormFull({
 
           {(appId === "claude" || appId === "claude-cn") && (
             <ClaudeFormFields
+              appId={appId}
               providerId={providerId}
               shouldShowApiKey={
                 (category !== "cloud_provider" ||
-                  hasApiKeyField(form.getValues("settingsConfig"), "claude")) &&
-                shouldShowApiKey(form.getValues("settingsConfig"), isEditMode)
+                  hasApiKeyField(settingsConfigValue, "claude")) &&
+                shouldShowApiKey(settingsConfigValue, isEditMode)
               }
               apiKey={apiKey}
               onApiKeyChange={handleApiKeyChange}

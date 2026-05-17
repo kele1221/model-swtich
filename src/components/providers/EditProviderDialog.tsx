@@ -77,6 +77,17 @@ export function EditProviderDialog({
         return;
       }
 
+      // Claude CN is managed as an independent fork namespace. Keep the edit
+      // form anchored to the provider DB record so stale/proxy live files cannot
+      // hide the saved endpoint/model values when reopening the provider.
+      if (appId === "claude-cn") {
+        if (!cancelled) {
+          setLiveSettings(null);
+          setHasLoadedLive(true);
+        }
+        return;
+      }
+
       if (appId === "openclaw") {
         try {
           const live = await openclawApi.getLiveProvider(provider.id);

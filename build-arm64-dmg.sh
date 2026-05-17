@@ -15,7 +15,7 @@ LOCAL_VERSION_FILE="$LOCAL_STATE_DIR/build-arm64-dmg.version"
 INSTALL_DIR="${INSTALL_DIR:-/Applications}"
 
 log() {
-  printf '[build-arm64-dmg] %s\n' "$*"
+  printf '[build-arm64-dmg] %s\n' "$*" >&2
 }
 
 require_cmd() {
@@ -31,6 +31,7 @@ require_cmd cargo
 require_cmd rustup
 require_cmd hdiutil
 require_cmd pgrep
+require_cmd plutil
 require_cmd rsync
 require_cmd osascript
 
@@ -56,6 +57,86 @@ next_local_version() {
 save_local_version() {
   mkdir -p "$LOCAL_STATE_DIR"
   printf '%s\n' "$1" > "$LOCAL_VERSION_FILE"
+}
+
+expected_app_version() {
+  node <<'NODE'
+const pkg = require("./package.json");
+const conf = require("./src-tauri/tauri.conf.json");
+
+if (pkg.version !== conf.version) {
+  console.error(
+    `[build-arm64-dmg] package.json version (${pkg.version}) does not match tauri.conf.json version (${conf.version})`,
+  );
+  process.exit(1);
+}
+
+process.stdout.write(pkg.version);
+NODE
+}
+
+plist_version() {
+  local app_bundle="$1"
+  local plist="$app_bundle/Contents/Info.plist"
+
+  [[ -f "$plist" ]] || return 1
+  plutil -extract CFBundleShortVersionString raw -o - "$plist" 2>/dev/null
+}
+
+app_bundle_mtime() {
+  local app_bundle="$1"
+  stat -f '%m' "$app_bundle/Contents/Info.plist"
+}
+
+resolve_app_bundle() {
+  local product_name="$1"
+  local expected_version="$2"
+  local build_started_at="$3"
+  local best_app=""
+  local best_mtime=0
+  local candidate version mtime
+  local candidates=(
+    "$ROOT_DIR/src-tauri/target/$TARGET_TRIPLE/release/bundle/macos/$product_name.app"
+    "$ROOT_DIR/src-tauri/target/release/bundle/macos/$product_name.app"
+  )
+
+  for candidate in "${candidates[@]}"; do
+    if [[ ! -d "$candidate" ]]; then
+      continue
+    fi
+
+    version="$(plist_version "$candidate" || true)"
+    if [[ "$version" != "$expected_version" ]]; then
+      log "skipping app bundle with unexpected version: $candidate ($version)"
+      continue
+    fi
+
+    mtime="$(app_bundle_mtime "$candidate")"
+    if (( mtime + 10 < build_started_at )); then
+      log "skipping stale app bundle: $candidate"
+      continue
+    fi
+
+    if (( mtime > best_mtime )); then
+      best_app="$candidate"
+      best_mtime="$mtime"
+    fi
+  done
+
+  if [[ -z "$best_app" ]]; then
+    printf '[build-arm64-dmg] no fresh app bundle with version %s was produced.\n' "$expected_version" >&2
+    printf '[build-arm64-dmg] checked candidates:\n' >&2
+    for candidate in "${candidates[@]}"; do
+      printf '  - %s' "$candidate" >&2
+      if [[ -d "$candidate" ]]; then
+        printf ' (version=%s)' "$(plist_version "$candidate" || printf unknown)" >&2
+      fi
+      printf '\n' >&2
+    done
+    exit 1
+  fi
+
+  printf '%s' "$best_app"
 }
 
 kill_running_app() {
@@ -101,11 +182,14 @@ replace_installed_app() {
   local product_name="$2"
   local installed_app="$INSTALL_DIR/$product_name.app"
   local temp_app="$INSTALL_DIR/.$product_name.app.tmp.$$"
+  local install_parent
 
   kill_running_app "$product_name"
 
   log "replacing installed app: $installed_app"
-  if [[ -w "$INSTALL_DIR" ]]; then
+  install_parent="$(dirname "$INSTALL_DIR")"
+  if [[ -d "$INSTALL_DIR" && -w "$INSTALL_DIR" ]] || [[ ! -d "$INSTALL_DIR" && -w "$install_parent" ]]; then
+    mkdir -p "$INSTALL_DIR"
     rm -rf "$temp_app"
     mkdir -p "$temp_app"
     rsync -a --delete "$app_bundle/" "$temp_app/"
@@ -114,6 +198,7 @@ replace_installed_app() {
     xattr -dr com.apple.quarantine "$installed_app" 2>/dev/null || true
   else
     require_cmd sudo
+    sudo mkdir -p "$INSTALL_DIR"
     sudo rm -rf "$temp_app"
     sudo mkdir -p "$temp_app"
     sudo rsync -a --delete "$app_bundle/" "$temp_app/"
@@ -138,8 +223,15 @@ if ! rustup target list --installed 2>/dev/null | grep -qx "$TARGET_TRIPLE"; the
   rustup target add "$TARGET_TRIPLE"
 fi
 
+PRODUCT_NAME="$(node -e "const c=require('./src-tauri/tauri.conf.json'); process.stdout.write(c.productName)")"
+EXPECTED_APP_VERSION="$(expected_app_version)"
+BUILD_STARTED_AT="$(date +%s)"
+
 log "building arm64 app bundle..."
-rm -rf dist
+rm -rf \
+  dist \
+  "src-tauri/target/$TARGET_TRIPLE/release/bundle/macos/$PRODUCT_NAME.app" \
+  "src-tauri/target/release/bundle/macos/$PRODUCT_NAME.app"
 pnpm tauri build \
   --target "$TARGET_TRIPLE" \
   --bundles app \
@@ -150,13 +242,14 @@ if ! grep -R "Claude CN" dist >/dev/null 2>&1; then
   exit 1
 fi
 
-PRODUCT_NAME="$(node -e "const c=require('./src-tauri/tauri.conf.json'); process.stdout.write(c.productName)")"
-LOCAL_BUILD_VERSION="$(next_local_version)"
-APP_BUNDLE="src-tauri/target/$TARGET_TRIPLE/release/bundle/macos/$PRODUCT_NAME.app"
-if [[ ! -d "$APP_BUNDLE" ]]; then
-  printf '[build-arm64-dmg] expected app bundle was not found: %s\n' "$APP_BUNDLE" >&2
+if ! grep -R "$EXPECTED_APP_VERSION" dist >/dev/null 2>&1; then
+  printf '[build-arm64-dmg] renderer verification failed: dist does not contain app version %s\n' "$EXPECTED_APP_VERSION" >&2
   exit 1
 fi
+
+LOCAL_BUILD_VERSION="$(next_local_version)"
+APP_BUNDLE="$(resolve_app_bundle "$PRODUCT_NAME" "$EXPECTED_APP_VERSION" "$BUILD_STARTED_AT")"
+log "using app bundle: $APP_BUNDLE"
 DMG_DIR="src-tauri/target/$TARGET_TRIPLE/release/bundle/dmg"
 DMG_PATH="$DMG_DIR/${PRODUCT_NAME}_${LOCAL_BUILD_VERSION}_aarch64.dmg"
 STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/model-swtich-dmg.XXXXXX")"

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-05-17 14:09:35]
+
+1. 【Claude CN 代理接管同步】修复 Claude CN 在代理接管模式下切换 provider 时 live 配置未同步的问题，proxy sync 函数新增 app_type 参数以区分 Claude 和 Claude CN 路由前缀，并补充相关集成测试
+2. 【前端 Claude CN 表单适配】ProviderCategory、SpeedTestEndpoints、BaseUrlState、ApiKeyLink、ClaudeFormFields 等 hook/组件全面支持 `claude-cn` appId；EditProviderDialog 对 Claude CN 跳过 live 配置读取以避免代理脏数据污染表单
+3. 【构建脚本增强】build-arm64-dmg.sh 新增 package.json/tauri.conf.json 版本一致性校验、多候选路径 app bundle 解析、过期 bundle 跳过、sudo mkdir-p 安装目录创建等能力
+4. 【版本升级与 UI 展示】版本号升至 3.15.1，侧边栏底部新增版本号显示
+
 ## [2026-05-17 09:53:02]
 
 1. 【品牌重命名】将项目从 `cc-switch` 全面重命名为 `model-switch`，包括包名、应用标识符、深链接协议、配置目录、日志文件、数据库文件等所有硬编码引用

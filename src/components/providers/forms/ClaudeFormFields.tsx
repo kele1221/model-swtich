@@ -52,6 +52,7 @@ import type {
   ClaudeApiFormat,
   ClaudeApiKeyField,
 } from "@/types";
+import type { AppId } from "@/lib/api";
 import {
   hasClaudeOneMMarker,
   setClaudeOneMMarker,
@@ -68,6 +69,7 @@ interface EndpointCandidate {
 }
 
 interface ClaudeFormFieldsProps {
+  appId: Extract<AppId, "claude" | "claude-cn">;
   providerId?: string;
   // API Key
   shouldShowApiKey: boolean;
@@ -141,6 +143,7 @@ interface ClaudeFormFieldsProps {
 }
 
 export function ClaudeFormFields({
+  appId,
   providerId,
   shouldShowApiKey,
   apiKey,
@@ -652,7 +655,7 @@ export function ClaudeFormFields({
       {/* 端点测速弹窗 */}
       {shouldShowSpeedTest && showEndpointTools && isEndpointModalOpen && (
         <EndpointSpeedTest
-          appId="claude"
+          appId={appId}
           providerId={providerId}
           value={baseUrl}
           onChange={onBaseUrlChange}

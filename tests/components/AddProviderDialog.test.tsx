@@ -125,4 +125,43 @@ describe("AddProviderDialog", () => {
       },
     });
   });
+
+  it("Claude CN 在缺少自定义端点时也回退到配置中的 baseUrl", async () => {
+    const handleSubmit = vi.fn().mockResolvedValue(undefined);
+
+    mockFormValues = {
+      name: "Claude CN Provider",
+      websiteUrl: "",
+      settingsConfig: JSON.stringify({
+        env: { ANTHROPIC_BASE_URL: "https://claude-cn.base" },
+        config: {},
+      }),
+    };
+
+    render(
+      <AddProviderDialog
+        open
+        onOpenChange={vi.fn()}
+        appId="claude-cn"
+        onSubmit={handleSubmit}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "common.add",
+      }),
+    );
+
+    await waitFor(() => expect(handleSubmit).toHaveBeenCalledTimes(1));
+
+    const submitted = handleSubmit.mock.calls[0][0];
+    expect(submitted.meta?.custom_endpoints).toEqual({
+      "https://claude-cn.base": {
+        url: "https://claude-cn.base",
+        addedAt: expect.any(Number),
+        lastUsed: undefined,
+      },
+    });
+  });
 });

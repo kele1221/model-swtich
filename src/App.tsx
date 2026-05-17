@@ -89,6 +89,7 @@ import ToolsPanel from "@/components/openclaw/ToolsPanel";
 import AgentsDefaultsPanel from "@/components/openclaw/AgentsDefaultsPanel";
 import OpenClawHealthBanner from "@/components/openclaw/OpenClawHealthBanner";
 import HermesMemoryPanel from "@/components/hermes/HermesMemoryPanel";
+import packageJson from "../package.json";
 
 type View =
   | "providers"
@@ -125,6 +126,7 @@ const VALID_APPS: AppId[] = [
   "openclaw",
   "hermes",
 ];
+const APP_VERSION = packageJson.version;
 
 const getInitialApp = (): AppId => {
   const saved = localStorage.getItem(STORAGE_KEY) as AppId | null;
@@ -194,6 +196,7 @@ function App() {
 
   const getFirstVisibleApp = (): AppId => {
     if (visibleApps.claude) return "claude";
+    if (visibleApps["claude-cn"]) return "claude-cn";
     if (visibleApps["claude-desktop"]) return "claude-desktop";
     if (visibleApps.codex) return "codex";
     if (visibleApps.gemini) return "gemini";
@@ -1211,6 +1214,9 @@ function App() {
                   >
                     Model-Switch
                   </a>
+                  <span className="ml-1.5 text-[11px] font-medium leading-none text-muted-foreground/70">
+                    v{APP_VERSION}
+                  </span>
                 </div>
                 <Button
                   variant="ghost"
