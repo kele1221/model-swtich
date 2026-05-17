@@ -429,7 +429,11 @@ const EndpointSpeedTest: React.FC<EndpointSpeedTestProps> = ({
         setInitialCustomUrls(currentCustomUrls);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : t("endpointTest.saveFailed");
+          error instanceof Error
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : t("endpointTest.saveFailed");
         setLastError(message);
         setIsSaving(false);
         return;
