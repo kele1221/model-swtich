@@ -678,6 +678,100 @@ impl ProxyService {
                     }
                 }
             }
+            AppType::ClaudeCn => {
+                let provider_id =
+                    crate::settings::get_effective_current_provider(&self.db, &AppType::ClaudeCn)
+                        .map_err(|e| format!("获取 Claude CN 当前供应商失败: {e}"))?;
+
+                if let Some(provider_id) = provider_id {
+                    if let Ok(Some(mut provider)) =
+                        self.db.get_provider_by_id(&provider_id, "claude-cn")
+                    {
+                        if let Some(env) = live_config.get("env").and_then(|v| v.as_object()) {
+                            let token_pair = [
+                                "ANTHROPIC_AUTH_TOKEN",
+                                "ANTHROPIC_API_KEY",
+                                "OPENROUTER_API_KEY",
+                                "OPENAI_API_KEY",
+                            ]
+                            .into_iter()
+                            .find_map(|key| {
+                                env.get(key)
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| (key, s.trim()))
+                            })
+                            .filter(|(_, token)| {
+                                !token.is_empty() && *token != PROXY_TOKEN_PLACEHOLDER
+                            });
+
+                            if let Some((token_key, token)) = token_pair {
+                                let env_obj = provider
+                                    .settings_config
+                                    .get_mut("env")
+                                    .and_then(|v| v.as_object_mut());
+
+                                match env_obj {
+                                    Some(obj) => {
+                                        if token_key == "ANTHROPIC_AUTH_TOKEN"
+                                            || token_key == "ANTHROPIC_API_KEY"
+                                        {
+                                            let mut updated = false;
+                                            if obj.contains_key("ANTHROPIC_AUTH_TOKEN") {
+                                                obj.insert(
+                                                    "ANTHROPIC_AUTH_TOKEN".to_string(),
+                                                    json!(token),
+                                                );
+                                                updated = true;
+                                            }
+                                            if obj.contains_key("ANTHROPIC_API_KEY") {
+                                                obj.insert(
+                                                    "ANTHROPIC_API_KEY".to_string(),
+                                                    json!(token),
+                                                );
+                                                updated = true;
+                                            }
+                                            if !updated {
+                                                obj.insert(token_key.to_string(), json!(token));
+                                            }
+                                        } else {
+                                            obj.insert(token_key.to_string(), json!(token));
+                                        }
+                                    }
+                                    None => {
+                                        if provider.settings_config.is_null() {
+                                            provider.settings_config = json!({});
+                                        }
+
+                                        if let Some(root) = provider.settings_config.as_object_mut()
+                                        {
+                                            root.insert(
+                                                "env".to_string(),
+                                                json!({ token_key: token }),
+                                            );
+                                        } else {
+                                            log::warn!(
+                                                "Claude CN provider settings_config 格式异常（非对象），跳过写入 Token (provider: {provider_id})"
+                                            );
+                                        }
+                                    }
+                                }
+
+                                if let Err(e) = self.db.update_provider_settings_config(
+                                    "claude-cn",
+                                    &provider_id,
+                                    &provider.settings_config,
+                                ) {
+                                    log::warn!("同步 Claude CN Token 到数据库失败: {e}");
+                                } else {
+                                    log::info!(
+                                        "已同步 Claude CN Token 到数据库 (provider: {provider_id})"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             AppType::Codex => {
                 let provider_id =
                     crate::settings::get_effective_current_provider(&self.db, &AppType::Codex)
@@ -793,6 +887,11 @@ impl ProxyService {
     async fn sync_live_to_providers(&self) -> Result<(), String> {
         if let Ok(live_config) = self.read_claude_live() {
             self.sync_live_config_to_provider(&AppType::Claude, &live_config)
+                .await?;
+        }
+
+        if let Ok(live_config) = self.read_claude_cn_live() {
+            self.sync_live_config_to_provider(&AppType::ClaudeCn, &live_config)
                 .await?;
         }
 
