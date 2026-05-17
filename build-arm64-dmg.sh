@@ -275,5 +275,8 @@ hdiutil create "$DMG_PATH" \
 save_local_version "$LOCAL_BUILD_VERSION"
 replace_installed_app "$APP_BUNDLE" "$PRODUCT_NAME"
 
+log "restarting app..."
+open "$INSTALL_DIR/$PRODUCT_NAME.app"
+
 log "DMG ready: $DMG_PATH"
 log "installed app updated: $INSTALL_DIR/$PRODUCT_NAME.app"

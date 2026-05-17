@@ -49,10 +49,12 @@ function parseModelsFromConfig(settingsConfig: string) {
       typeof env.ANTHROPIC_DEFAULT_HAIKU_MODEL === "string"
         ? env.ANTHROPIC_DEFAULT_HAIKU_MODEL
         : small || model;
+    const safeModel = stripClaudeOneMMarker(model);
+    const safeHaiku = stripClaudeOneMMarker(haiku);
     const haikuName =
       typeof env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME === "string"
         ? env.ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME
-        : stripClaudeOneMMarker(haiku);
+        : safeHaiku;
     const sonnet =
       typeof env.ANTHROPIC_DEFAULT_SONNET_MODEL === "string"
         ? env.ANTHROPIC_DEFAULT_SONNET_MODEL
@@ -70,7 +72,15 @@ function parseModelsFromConfig(settingsConfig: string) {
         ? env.ANTHROPIC_DEFAULT_OPUS_MODEL_NAME
         : stripClaudeOneMMarker(opus);
 
-    return { model, haiku, haikuName, sonnet, sonnetName, opus, opusName };
+    return {
+      model: safeModel,
+      haiku: safeHaiku,
+      haikuName,
+      sonnet,
+      sonnetName,
+      opus,
+      opusName,
+    };
   } catch {
     return {
       model: "",

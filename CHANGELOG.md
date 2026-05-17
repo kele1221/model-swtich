@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-05-17 14:40:39]
+
+1. 【后端 1M 标记剥离】`normalize_claude_models_in_value` 函数新增对 `ANTHROPIC_MODEL` 和 `ANTHROPIC_DEFAULT_HAIKU_MODEL` 的 `[1M]`/`[1m]` 后缀剥离逻辑，并补充两个单元测试验证剥离行为
+2. 【前端 1M 标记剥离】`useModelState` hook 在解析配置时对 model 和 haiku 字段执行 `stripClaudeOneMMarker`，`ClaudeFormFields` 组件对 fallback 模型输入展示和保存时同步剥离 1M 标记，并新增前端单元测试覆盖该场景
+3. 【构建脚本优化】`build-arm64-dmg.sh` 在安装完成后自动重启应用（`open "$INSTALL_DIR/$PRODUCT_NAME.app"`）
+
 ## [2026-05-17 14:09:35]
 
 1. 【Claude CN 代理接管同步】修复 Claude CN 在代理接管模式下切换 provider 时 live 配置未同步的问题，proxy sync 函数新增 app_type 参数以区分 Claude 和 Claude CN 路由前缀，并补充相关集成测试

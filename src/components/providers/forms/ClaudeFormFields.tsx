@@ -925,9 +925,14 @@ export function ClaudeFormFields({
               </FormLabel>
               {renderModelInput(
                 "claudeModel",
-                claudeModel,
+                stripClaudeOneMMarker(claudeModel),
                 "ANTHROPIC_MODEL",
                 t("providerForm.modelPlaceholder", { defaultValue: "" }),
+                (value) =>
+                  onModelChange(
+                    "ANTHROPIC_MODEL",
+                    stripClaudeOneMMarker(value),
+                  ),
               )}
               <p className="text-xs text-muted-foreground">
                 {t("providerForm.fallbackModelHint", {

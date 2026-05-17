@@ -124,6 +124,61 @@ mod tests {
             .unwrap_or_else(|err| err.into_inner())
     }
 
+    #[test]
+    fn normalize_claude_models_strips_one_m_from_fallback_and_haiku() {
+        let mut settings = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "mimo-v2.5-pro[1m]",
+                "ANTHROPIC_DEFAULT_HAIKU_MODEL": "mimo-v2.5-pro[1M]",
+                "ANTHROPIC_DEFAULT_SONNET_MODEL": "mimo-v2.5-pro[1M]",
+                "ANTHROPIC_DEFAULT_OPUS_MODEL": "mimo-v2.5-pro[1M]"
+            }
+        });
+
+        assert!(normalize_claude_models_in_value(&mut settings));
+        let env = settings["env"].as_object().expect("env object");
+        assert_eq!(
+            env.get("ANTHROPIC_MODEL").and_then(Value::as_str),
+            Some("mimo-v2.5-pro")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+                .and_then(Value::as_str),
+            Some("mimo-v2.5-pro")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_SONNET_MODEL")
+                .and_then(Value::as_str),
+            Some("mimo-v2.5-pro[1M]")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_OPUS_MODEL")
+                .and_then(Value::as_str),
+            Some("mimo-v2.5-pro[1M]")
+        );
+    }
+
+    #[test]
+    fn normalize_claude_models_does_not_copy_one_m_fallback_to_haiku() {
+        let mut settings = json!({
+            "env": {
+                "ANTHROPIC_MODEL": "mimo-v2.5-pro[1M]"
+            }
+        });
+
+        assert!(normalize_claude_models_in_value(&mut settings));
+        let env = settings["env"].as_object().expect("env object");
+        assert_eq!(
+            env.get("ANTHROPIC_MODEL").and_then(Value::as_str),
+            Some("mimo-v2.5-pro")
+        );
+        assert_eq!(
+            env.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+                .and_then(Value::as_str),
+            Some("mimo-v2.5-pro")
+        );
+    }
+
     fn with_test_home<T>(test: impl FnOnce(&AppState, &Path) -> T) -> T {
         let _guard = test_guard();
         let temp = tempfile::tempdir().expect("tempdir");
@@ -2624,6 +2679,22 @@ pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
         None => return changed,
     };
 
+    let strip_one_m = |value: &str| {
+        crate::proxy::model_mapper::strip_one_m_suffix_for_upstream(value)
+            .trim()
+            .to_string()
+    };
+
+    for key in ["ANTHROPIC_MODEL", "ANTHROPIC_DEFAULT_HAIKU_MODEL"] {
+        if let Some(value) = env.get(key).and_then(|v| v.as_str()) {
+            let stripped = strip_one_m(value);
+            if stripped != value {
+                env.insert(key.to_string(), Value::String(stripped));
+                changed = true;
+            }
+        }
+    }
+
     let model = env
         .get("ANTHROPIC_MODEL")
         .and_then(|v| v.as_str())
@@ -2660,7 +2731,7 @@ pub(crate) fn normalize_claude_models_in_value(settings: &mut Value) -> bool {
         if let Some(v) = target_haiku {
             env.insert(
                 "ANTHROPIC_DEFAULT_HAIKU_MODEL".to_string(),
-                Value::String(v),
+                Value::String(strip_one_m(&v)),
             );
             changed = true;
         }

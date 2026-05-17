@@ -94,6 +94,26 @@ describe("useModelState", () => {
     expect(result.current.defaultSonnetModelName).toBe("deepseek-v4-pro");
   });
 
+  it("strips 1M markers from fallback and Haiku models during hydration", () => {
+    const settingsConfig = JSON.stringify({
+      env: {
+        ANTHROPIC_MODEL: "mimo-v2.5-pro[1m]",
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: "mimo-v2.5-pro[1M]",
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useModelState({
+        settingsConfig,
+        onConfigChange: vi.fn(),
+      }),
+    );
+
+    expect(result.current.claudeModel).toBe("mimo-v2.5-pro");
+    expect(result.current.defaultHaikuModel).toBe("mimo-v2.5-pro");
+    expect(result.current.defaultHaikuModelName).toBe("mimo-v2.5-pro");
+  });
+
   it("normalizes Claude Code 1M markers for UI toggles", () => {
     expect(hasClaudeOneMMarker("deepseek-v4-pro[1m]")).toBe(true);
     expect(hasClaudeOneMMarker("deepseek-v4-pro [1M]  ")).toBe(true);
