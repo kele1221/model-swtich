@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2026-05-17 09:53:02]
+
+1. 【品牌重命名】将项目从 `cc-switch` 全面重命名为 `model-switch`，包括包名、应用标识符、深链接协议、配置目录、日志文件、数据库文件等所有硬编码引用
+2. 【Claude CN 独立路由】新增 Claude CN 应用的独立代理路由支持，包括 handlers、proxy service、数据库 schema 迁移(v11→v12)、前端 ProxyPanel 四列布局展示
+3. 【构建脚本增强】build-arm64-dmg.sh 增加本地版本管理、应用自动关闭/恢复、rsync 增量同步等能力
+4. 【配置目录简化】移除 Windows v3.10.3 旧版数据库兼容回退逻辑，统一使用 `~/.model-switch` 目录
+5. 【代理面板优化】移除 framer-motion 动画依赖，改为静态布局；增加 Claude CN 接管开关
+6. 【国际化更新】更新 zh/en/ja 三语翻译，将所有 `CC Switch` 替换为 `Model-Switch`
+7. 【GitHub 链接替换】将所有 farion1231/cc-switch 链接替换为 kele1221/model-swtich
+8. 【图标资源替换】更新应用图标为新的品牌图标（128x128、32x32、64x128、icns、ico、png）
+9. 【设置路径统一】settings.json 路径从硬编码 `~/.cc-switch/settings.json` 改为使用 `get_app_config_dir()`
+10. 【WebDAV 同步目录】默认远程根目录从 `cc-switch-sync` 改为 `model-switch-sync`
+
 ## [3.15.0] - 2026-05-16
 
 Development since v3.14.1 focuses on a dedicated Claude Desktop surface with third-party provider switching through a proxy gateway, a large reverse-proxy hardening pass (reliability, retries, cache, takeover, Gemini/Vertex/Codex paths), expansion of the third-party provider preset catalog (BytePlus / Volcengine / ClaudeAPI / ClaudeCN / RunAPI / RelaxyCode / PatewayAI / Baidu Qianfan), role-based model mapping with a 1M context flag, Codex OAuth live model discovery, and a long tail of usage, OAuth, Codex, and session quality-of-life fixes.

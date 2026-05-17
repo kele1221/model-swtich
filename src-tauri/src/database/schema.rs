@@ -124,7 +124,7 @@ impl Database {
 
         // 8. Proxy Config 表（三行结构，app_type 主键）
         conn.execute("CREATE TABLE IF NOT EXISTS proxy_config (
-            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini')),
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','claude-cn','codex','gemini')),
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
@@ -153,6 +153,14 @@ impl Database {
                 [],
             )
             .map_err(|e| AppError::Database(e.to_string()))?;
+            let _ = conn.execute(
+                "INSERT OR IGNORE INTO proxy_config (app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests)
+                VALUES ('claude-cn', 6, 90, 180, 600, 8, 3, 90, 0.7, 15)",
+                [],
+            );
             conn.execute(
                 "INSERT OR IGNORE INTO proxy_config (app_type, max_retries,
                 streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
@@ -437,6 +445,11 @@ impl Database {
                         log::info!("迁移数据库从 v10 到 v11（添加 Claude CN 支持）");
                         Self::migrate_v10_to_v11(conn)?;
                         Self::set_user_version(conn, 11)?;
+                    }
+                    11 => {
+                        log::info!("迁移数据库从 v11 到 v12（Claude CN 独立路由开关）");
+                        Self::migrate_v11_to_v12(conn)?;
+                        Self::set_user_version(conn, 12)?;
                     }
                     _ => {
                         return Err(AppError::Database(format!(
@@ -725,6 +738,23 @@ impl Database {
                 15,
             ),
             (
+                "claude-cn",
+                get_bool("proxy_takeover_claude-cn")
+                    || get_bool("proxy_takeover_claude_cn")
+                    || get_bool("proxy_takeover_claudecn"),
+                get_bool("auto_failover_enabled_claude-cn")
+                    || get_bool("auto_failover_enabled_claude_cn")
+                    || get_bool("auto_failover_enabled_claudecn"),
+                6,
+                45,
+                90,
+                8,
+                3,
+                90,
+                0.6,
+                15,
+            ),
+            (
                 "codex",
                 get_bool("proxy_takeover_codex"),
                 get_bool("auto_failover_enabled_codex"),
@@ -755,7 +785,7 @@ impl Database {
         // 创建新表
         conn.execute("DROP TABLE IF EXISTS proxy_config_new", [])?;
         conn.execute("CREATE TABLE proxy_config_new (
-            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','codex','gemini')),
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','claude-cn','codex','gemini')),
             proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
             listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
             enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
@@ -1226,6 +1256,133 @@ impl Database {
         }
 
         log::info!("v10 -> v11 迁移完成：已添加 Claude CN 支持");
+        Ok(())
+    }
+
+    /// v11 -> v12 迁移：为 Claude CN 添加独立 proxy_config 行与约束支持
+    fn migrate_v11_to_v12(conn: &Connection) -> Result<(), AppError> {
+        if Self::table_exists(conn, "proxy_config")? {
+            Self::migrate_proxy_config_to_per_app_v12(conn)?;
+        }
+
+        log::info!("v11 -> v12 迁移完成：Claude CN 已支持独立路由接管开关");
+        Ok(())
+    }
+
+    fn migrate_proxy_config_to_per_app_v12(conn: &Connection) -> Result<(), AppError> {
+        conn.execute("DROP TABLE IF EXISTS proxy_config_v12", [])?;
+        conn.execute("CREATE TABLE proxy_config_v12 (
+            app_type TEXT PRIMARY KEY CHECK (app_type IN ('claude','claude-cn','codex','gemini')),
+            proxy_enabled INTEGER NOT NULL DEFAULT 0, listen_address TEXT NOT NULL DEFAULT '127.0.0.1',
+            listen_port INTEGER NOT NULL DEFAULT 15721, enable_logging INTEGER NOT NULL DEFAULT 1,
+            enabled INTEGER NOT NULL DEFAULT 0, auto_failover_enabled INTEGER NOT NULL DEFAULT 0,
+            max_retries INTEGER NOT NULL DEFAULT 3, streaming_first_byte_timeout INTEGER NOT NULL DEFAULT 60,
+            streaming_idle_timeout INTEGER NOT NULL DEFAULT 120, non_streaming_timeout INTEGER NOT NULL DEFAULT 600,
+            circuit_failure_threshold INTEGER NOT NULL DEFAULT 4, circuit_success_threshold INTEGER NOT NULL DEFAULT 2,
+            circuit_timeout_seconds INTEGER NOT NULL DEFAULT 60, circuit_error_rate_threshold REAL NOT NULL DEFAULT 0.6,
+            circuit_min_requests INTEGER NOT NULL DEFAULT 10,
+            default_cost_multiplier TEXT NOT NULL DEFAULT '1',
+            pricing_model_source TEXT NOT NULL DEFAULT 'response',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')), updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )", [])?;
+
+        let has_app_type = Self::has_column(conn, "proxy_config", "app_type")?;
+
+        let get_i64 = |app: &str, column: &str, default: i64| -> i64 {
+            if !Self::has_column(conn, "proxy_config", column).unwrap_or(false) {
+                return default;
+            }
+            let sql = if has_app_type {
+                format!("SELECT {column} FROM proxy_config WHERE app_type = ?1")
+            } else {
+                format!("SELECT {column} FROM proxy_config WHERE id = 1")
+            };
+            if has_app_type {
+                conn.query_row(&sql, [app], |row| row.get::<_, i64>(0))
+                    .unwrap_or(default)
+            } else {
+                conn.query_row(&sql, [], |row| row.get::<_, i64>(0))
+                    .unwrap_or(default)
+            }
+        };
+
+        let get_f64 = |app: &str, column: &str, default: f64| -> f64 {
+            if !Self::has_column(conn, "proxy_config", column).unwrap_or(false) {
+                return default;
+            }
+            let sql = if has_app_type {
+                format!("SELECT {column} FROM proxy_config WHERE app_type = ?1")
+            } else {
+                format!("SELECT {column} FROM proxy_config WHERE id = 1")
+            };
+            if has_app_type {
+                conn.query_row(&sql, [app], |row| row.get::<_, f64>(0))
+                    .unwrap_or(default)
+            } else {
+                conn.query_row(&sql, [], |row| row.get::<_, f64>(0))
+                    .unwrap_or(default)
+            }
+        };
+
+        let get_string = |app: &str, column: &str, default: &str| -> String {
+            if !Self::has_column(conn, "proxy_config", column).unwrap_or(false) {
+                return default.to_string();
+            }
+            let sql = if has_app_type {
+                format!("SELECT {column} FROM proxy_config WHERE app_type = ?1")
+            } else {
+                format!("SELECT {column} FROM proxy_config WHERE id = 1")
+            };
+            if has_app_type {
+                conn.query_row(&sql, [app], |row| row.get::<_, String>(0))
+                    .unwrap_or_else(|_| default.to_string())
+            } else {
+                conn.query_row(&sql, [], |row| row.get::<_, String>(0))
+                    .unwrap_or_else(|_| default.to_string())
+            }
+        };
+
+        let apps = [
+            ("claude", 6, 90, 180, 8, 3, 90, 0.7, 15),
+            ("claude-cn", 6, 90, 180, 8, 3, 90, 0.7, 15),
+            ("codex", 3, 60, 120, 4, 2, 60, 0.6, 10),
+            ("gemini", 5, 60, 120, 4, 2, 60, 0.6, 10),
+        ];
+
+        for (app, retries, fb, idle, cb_f, cb_s, cb_t, cb_r, cb_m) in apps {
+            let source_app = if app == "claude-cn" { "claude" } else { app };
+            conn.execute(
+                "INSERT OR IGNORE INTO proxy_config_v12 (app_type, proxy_enabled, listen_address, listen_port, enable_logging,
+                 enabled, auto_failover_enabled, max_retries, streaming_first_byte_timeout, streaming_idle_timeout,
+                 non_streaming_timeout, circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                 circuit_error_rate_threshold, circuit_min_requests, default_cost_multiplier, pricing_model_source)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                rusqlite::params![
+                    app,
+                    get_i64(source_app, "proxy_enabled", 0),
+                    get_string(source_app, "listen_address", "127.0.0.1"),
+                    get_i64(source_app, "listen_port", 15721),
+                    get_i64(source_app, "enable_logging", 1),
+                    if app == "claude-cn" { 0 } else { get_i64(app, "enabled", 0) },
+                    if app == "claude-cn" { 0 } else { get_i64(app, "auto_failover_enabled", 0) },
+                    get_i64(app, "max_retries", retries),
+                    get_i64(app, "streaming_first_byte_timeout", fb),
+                    get_i64(app, "streaming_idle_timeout", idle),
+                    get_i64(app, "non_streaming_timeout", 600),
+                    get_i64(app, "circuit_failure_threshold", cb_f),
+                    get_i64(app, "circuit_success_threshold", cb_s),
+                    get_i64(app, "circuit_timeout_seconds", cb_t),
+                    get_f64(app, "circuit_error_rate_threshold", cb_r),
+                    get_i64(app, "circuit_min_requests", cb_m),
+                    get_string(source_app, "default_cost_multiplier", "1"),
+                    get_string(source_app, "pricing_model_source", "response"),
+                ],
+            )
+            .map_err(|e| AppError::Database(format!("迁移 {app} 路由配置失败: {e}")))?;
+        }
+
+        conn.execute("DROP TABLE proxy_config", [])?;
+        conn.execute("ALTER TABLE proxy_config_v12 RENAME TO proxy_config", [])?;
         Ok(())
     }
 

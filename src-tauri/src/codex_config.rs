@@ -11,7 +11,7 @@ use std::fs;
 use std::path::Path;
 use toml_edit::DocumentMut;
 
-pub const CC_SWITCH_CODEX_MODEL_PROVIDER_ID: &str = "ccswitch";
+pub const CC_SWITCH_CODEX_MODEL_PROVIDER_ID: &str = "modelswitch";
 
 /// Reserved built-in provider IDs from OpenAI Codex's config/model-provider
 /// catalog. Keep in sync with Codex `RESERVED_MODEL_PROVIDER_IDS` and legacy

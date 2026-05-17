@@ -20,6 +20,7 @@ pub async fn start_proxy_server(
 pub async fn stop_proxy_server(state: tauri::State<'_, AppState>) -> Result<(), String> {
     let takeover = state.proxy_service.get_takeover_status().await?;
     if takeover.claude
+        || takeover.claude_cn
         || takeover.codex
         || takeover.gemini
         || takeover.opencode

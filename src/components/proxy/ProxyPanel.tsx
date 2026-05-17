@@ -28,7 +28,6 @@ import {
 } from "@/lib/query/proxy";
 import type { ProxyStatus } from "@/types/proxy";
 import { useTranslation } from "react-i18next";
-import { AnimatePresence, motion } from "framer-motion";
 
 interface ProxyPanelProps {
   enableLocalProxy: boolean;
@@ -249,57 +248,49 @@ export function ProxyPanel({
           />
         </div>
 
-        {/* [3] App takeover switches — animated, visible only when proxy is running */}
-        <AnimatePresence>
-          {isRunning && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25, ease: "easeInOut" }}
-              className="overflow-hidden"
-            >
-              <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4 space-y-3">
-                <p className="text-xs font-medium text-primary">
-                  {t("proxyConfig.appTakeover", {
-                    defaultValue: "应用接管",
-                  })}
-                </p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {(["claude", "codex", "gemini"] as const).map((appType) => {
-                    const isEnabled =
-                      takeoverStatus?.[
-                        appType as keyof typeof takeoverStatus
-                      ] ?? false;
-                    return (
-                      <div
-                        key={appType}
-                        className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
-                      >
-                        <span className="text-sm font-medium capitalize">
-                          {appType}
-                        </span>
-                        <Switch
-                          checked={isEnabled}
-                          onCheckedChange={(checked) =>
-                            handleTakeoverChange(appType, checked)
-                          }
-                          disabled={setTakeoverForApp.isPending}
-                        />
-                      </div>
-                    );
-                  })}
+        {/* [3] App takeover switches */}
+        <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4 space-y-3">
+          <p className="text-xs font-medium text-primary">
+            {t("proxyConfig.appTakeover", {
+              defaultValue: "应用接管",
+            })}
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {(
+              [
+                { appType: "claude", label: "Claude" },
+                { appType: "claude-cn", label: "Claude CN" },
+                { appType: "codex", label: "Codex" },
+                { appType: "gemini", label: "Gemini" },
+              ] as const
+            ).map(({ appType, label }) => {
+              const isEnabled =
+                takeoverStatus?.[appType as keyof typeof takeoverStatus] ??
+                false;
+              return (
+                <div
+                  key={appType}
+                  className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
+                >
+                  <span className="text-sm font-medium">{label}</span>
+                  <Switch
+                    checked={isEnabled}
+                    onCheckedChange={(checked) =>
+                      handleTakeoverChange(appType, checked)
+                    }
+                    disabled={setTakeoverForApp.isPending}
+                  />
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  {t("proxy.takeover.hint", {
-                    defaultValue:
-                      "选择要接管的应用，启用后该应用的请求将通过本地代理转发",
-                  })}
-                </p>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {t("proxy.takeover.hint", {
+              defaultValue:
+                "选择要接管的应用，启用后该应用的请求将通过本地代理转发",
+            })}
+          </p>
+        </div>
 
         {/* Running state: service info + stats */}
         {isRunning && status ? (

@@ -3,7 +3,9 @@
 //! 提供代理服务器的启动、停止和配置管理
 
 use crate::app_config::AppType;
-use crate::config::{get_claude_settings_path, read_json_file, write_json_file};
+use crate::config::{
+    get_claude_cn_settings_path, get_claude_settings_path, read_json_file, write_json_file,
+};
 use crate::database::Database;
 use crate::provider::Provider;
 use crate::proxy::server::ProxyServer;
@@ -358,6 +360,12 @@ impl ProxyService {
             .await
             .map(|c| c.enabled)
             .unwrap_or(false);
+        let claude_cn_enabled = self
+            .db
+            .get_proxy_config_for_app("claude-cn")
+            .await
+            .map(|c| c.enabled)
+            .unwrap_or(false);
         let codex_enabled = self
             .db
             .get_proxy_config_for_app("codex")
@@ -376,6 +384,7 @@ impl ProxyService {
 
         Ok(ProxyTakeoverStatus {
             claude: claude_enabled,
+            claude_cn: claude_cn_enabled,
             codex: codex_enabled,
             gemini: gemini_enabled,
             opencode: opencode_enabled,
@@ -558,6 +567,7 @@ impl ProxyService {
     async fn sync_live_to_provider(&self, app_type: &AppType) -> Result<(), String> {
         let live_config = match app_type {
             AppType::Claude => self.read_claude_live()?,
+            AppType::ClaudeCn => self.read_claude_cn_live()?,
             AppType::Codex => self.read_codex_live()?,
             AppType::Gemini => self.read_gemini_live()?,
             _ => return Err("该应用不支持代理功能".to_string()),
@@ -923,6 +933,16 @@ impl ProxyService {
                 .map_err(|e| format!("备份 Claude 配置失败: {e}"))?;
         }
 
+        // Claude CN
+        if let Ok(config) = self.read_claude_cn_live() {
+            let json_str = serde_json::to_string(&config)
+                .map_err(|e| format!("序列化 Claude CN 配置失败: {e}"))?;
+            self.db
+                .save_live_backup("claude-cn", &json_str)
+                .await
+                .map_err(|e| format!("备份 Claude CN 配置失败: {e}"))?;
+        }
+
         // Codex
         if let Ok(config) = self.read_codex_live() {
             let json_str = serde_json::to_string(&config)
@@ -951,6 +971,7 @@ impl ProxyService {
     async fn backup_live_config_strict(&self, app_type: &AppType) -> Result<(), String> {
         let (app_type_str, config) = match app_type {
             AppType::Claude => ("claude", self.read_claude_live()?),
+            AppType::ClaudeCn => ("claude-cn", self.read_claude_cn_live()?),
             AppType::Codex => ("codex", self.read_codex_live()?),
             AppType::Gemini => ("gemini", self.read_gemini_live()?),
             _ => return Err("该应用不支持代理功能".to_string()),
@@ -1012,6 +1033,14 @@ impl ProxyService {
             log::info!("Claude Live 配置已接管，代理地址: {proxy_url}");
         }
 
+        // Claude CN: 使用独立前缀路由到 claude-cn provider namespace
+        if let Ok(mut live_config) = self.read_claude_cn_live() {
+            let proxy_claude_cn_url = format!("{}/claude-cn", proxy_url.trim_end_matches('/'));
+            Self::apply_claude_takeover_fields(&mut live_config, &proxy_claude_cn_url);
+            self.write_claude_cn_live(&live_config)?;
+            log::info!("Claude CN Live 配置已接管，代理地址: {proxy_claude_cn_url}");
+        }
+
         // Codex: 修改 config.toml 的 base_url，auth.json 的 OPENAI_API_KEY（代理会注入真实 Token）
         if let Ok(mut live_config) = self.read_codex_live() {
             // 1. 修改 auth.json 中的 OPENAI_API_KEY（使用占位符）
@@ -1061,6 +1090,13 @@ impl ProxyService {
                 self.write_claude_live(&live_config)?;
                 log::info!("Claude Live 配置已接管，代理地址: {proxy_url}");
             }
+            AppType::ClaudeCn => {
+                let mut live_config = self.read_claude_cn_live()?;
+                let proxy_claude_cn_url = format!("{}/claude-cn", proxy_url.trim_end_matches('/'));
+                Self::apply_claude_takeover_fields(&mut live_config, &proxy_claude_cn_url);
+                self.write_claude_cn_live(&live_config)?;
+                log::info!("Claude CN Live 配置已接管，代理地址: {proxy_claude_cn_url}");
+            }
             AppType::Codex => {
                 let mut live_config = self.read_codex_live()?;
 
@@ -1109,6 +1145,14 @@ impl ProxyService {
                 if let Ok(mut live_config) = self.read_claude_live() {
                     Self::apply_claude_takeover_fields(&mut live_config, &proxy_url);
                     let _ = self.write_claude_live(&live_config);
+                }
+            }
+            AppType::ClaudeCn => {
+                if let Ok(mut live_config) = self.read_claude_cn_live() {
+                    let proxy_claude_cn_url =
+                        format!("{}/claude-cn", proxy_url.trim_end_matches('/'));
+                    Self::apply_claude_takeover_fields(&mut live_config, &proxy_claude_cn_url);
+                    let _ = self.write_claude_cn_live(&live_config);
                 }
             }
             AppType::Codex => {
@@ -1166,6 +1210,14 @@ impl ProxyService {
                     log::info!("Claude Live 配置已恢复");
                 }
             }
+            AppType::ClaudeCn => {
+                if let Ok(Some(backup)) = self.db.get_live_backup("claude-cn").await {
+                    let config: Value = serde_json::from_str(&backup.original_config)
+                        .map_err(|e| format!("解析 Claude CN 备份失败: {e}"))?;
+                    self.write_claude_cn_live(&config)?;
+                    log::info!("Claude CN Live 配置已恢复");
+                }
+            }
             AppType::Codex => {
                 if let Ok(Some(backup)) = self.db.get_live_backup("codex").await {
                     let config: Value = serde_json::from_str(&backup.original_config)
@@ -1192,7 +1244,12 @@ impl ProxyService {
     async fn restore_live_configs(&self) -> Result<(), String> {
         let mut errors = Vec::new();
 
-        for app_type in [AppType::Claude, AppType::Codex, AppType::Gemini] {
+        for app_type in [
+            AppType::Claude,
+            AppType::ClaudeCn,
+            AppType::Codex,
+            AppType::Gemini,
+        ] {
             if let Err(e) = self
                 .restore_live_config_for_app_with_fallback(&app_type)
                 .await
@@ -1269,6 +1326,7 @@ impl ProxyService {
     fn write_live_config_for_app(&self, app_type: &AppType, config: &Value) -> Result<(), String> {
         match app_type {
             AppType::Claude => self.write_claude_live(config),
+            AppType::ClaudeCn => self.write_claude_cn_live(config),
             AppType::Codex => self.write_codex_live(config),
             AppType::Gemini => self.write_gemini_live(config),
             _ => Err("该应用不支持代理功能".to_string()),
@@ -1278,6 +1336,10 @@ impl ProxyService {
     pub fn detect_takeover_in_live_config_for_app(&self, app_type: &AppType) -> bool {
         match app_type {
             AppType::Claude => match self.read_claude_live() {
+                Ok(config) => Self::is_claude_live_taken_over(&config),
+                Err(_) => false,
+            },
+            AppType::ClaudeCn => match self.read_claude_cn_live() {
                 Ok(config) => Self::is_claude_live_taken_over(&config),
                 Err(_) => false,
             },
@@ -1327,6 +1389,7 @@ impl ProxyService {
     ) -> Result<(), String> {
         match app_type {
             AppType::Claude => self.cleanup_claude_takeover_placeholders_in_live(),
+            AppType::ClaudeCn => self.cleanup_claude_cn_takeover_placeholders_in_live(),
             AppType::Codex => self.cleanup_codex_takeover_placeholders_in_live(),
             AppType::Gemini => self.cleanup_gemini_takeover_placeholders_in_live(),
             _ => Ok(()),
@@ -1350,9 +1413,21 @@ impl ProxyService {
 
     fn cleanup_claude_takeover_placeholders_in_live(&self) -> Result<(), String> {
         let mut config = self.read_claude_live()?;
+        Self::cleanup_claude_takeover_placeholders(&mut config);
+        self.write_claude_live(&config)?;
+        Ok(())
+    }
 
+    fn cleanup_claude_cn_takeover_placeholders_in_live(&self) -> Result<(), String> {
+        let mut config = self.read_claude_cn_live()?;
+        Self::cleanup_claude_takeover_placeholders(&mut config);
+        self.write_claude_cn_live(&config)?;
+        Ok(())
+    }
+
+    fn cleanup_claude_takeover_placeholders(config: &mut Value) {
         let Some(env) = config.get_mut("env").and_then(|v| v.as_object_mut()) else {
-            return Ok(());
+            return;
         };
 
         for key in [
@@ -1374,9 +1449,6 @@ impl ProxyService {
         {
             env.remove("ANTHROPIC_BASE_URL");
         }
-
-        self.write_claude_live(&config)?;
-        Ok(())
     }
 
     fn cleanup_codex_takeover_placeholders_in_live(&self) -> Result<(), String> {
@@ -1430,7 +1502,7 @@ impl ProxyService {
     /// 检查是否处于 Live 接管模式
     pub async fn is_takeover_active(&self) -> Result<bool, String> {
         let status = self.get_takeover_status().await?;
-        Ok(status.claude || status.codex || status.gemini)
+        Ok(status.claude || status.claude_cn || status.codex || status.gemini)
     }
 
     /// 从异常退出中恢复（启动时调用）
@@ -1463,6 +1535,12 @@ impl ProxyService {
     /// 启动流程可以据此触发恢复逻辑。
     pub fn detect_takeover_in_live_configs(&self) -> bool {
         if let Ok(config) = self.read_claude_live() {
+            if Self::is_claude_live_taken_over(&config) {
+                return true;
+            }
+        }
+
+        if let Ok(config) = self.read_claude_cn_live() {
             if Self::is_claude_live_taken_over(&config) {
                 return true;
             }
@@ -1758,13 +1836,20 @@ impl ProxyService {
     }
 
     fn read_claude_live(&self) -> Result<Value, String> {
-        let path = get_claude_settings_path();
+        Self::read_claude_like_live(get_claude_settings_path(), "Claude")
+    }
+
+    fn read_claude_cn_live(&self) -> Result<Value, String> {
+        Self::read_claude_like_live(get_claude_cn_settings_path(), "Claude CN")
+    }
+
+    fn read_claude_like_live(path: std::path::PathBuf, label: &str) -> Result<Value, String> {
         if !path.exists() {
-            return Err("Claude 配置文件不存在".to_string());
+            return Err(format!("{label} 配置文件不存在"));
         }
 
         let mut value: Value =
-            read_json_file(&path).map_err(|e| format!("读取 Claude 配置失败: {e}"))?;
+            read_json_file(&path).map_err(|e| format!("读取 {label} 配置失败: {e}"))?;
 
         if value.is_null() {
             value = json!({});
@@ -1780,7 +1865,7 @@ impl ProxyService {
                 Value::Object(_) => "object",
             };
             return Err(format!(
-                "Claude 配置文件格式错误：根节点必须是 JSON 对象（当前为 {kind}），路径: {}",
+                "{label} 配置文件格式错误：根节点必须是 JSON 对象（当前为 {kind}），路径: {}",
                 path.display()
             ));
         }
@@ -1789,9 +1874,20 @@ impl ProxyService {
     }
 
     fn write_claude_live(&self, config: &Value) -> Result<(), String> {
-        let path = get_claude_settings_path();
+        Self::write_claude_like_live(get_claude_settings_path(), "Claude", config)
+    }
+
+    fn write_claude_cn_live(&self, config: &Value) -> Result<(), String> {
+        Self::write_claude_like_live(get_claude_cn_settings_path(), "Claude CN", config)
+    }
+
+    fn write_claude_like_live(
+        path: std::path::PathBuf,
+        label: &str,
+        config: &Value,
+    ) -> Result<(), String> {
         let settings = crate::services::provider::sanitize_claude_settings_for_live(config);
-        write_json_file(&path, &settings).map_err(|e| format!("写入 Claude 配置失败: {e}"))
+        write_json_file(&path, &settings).map_err(|e| format!("写入 {label} 配置失败: {e}"))
     }
 
     fn read_codex_live(&self) -> Result<Value, String> {
@@ -1944,6 +2040,11 @@ impl ProxyService {
 
                 if takeover.claude {
                     self.takeover_live_config_best_effort(&AppType::Claude)
+                        .await?;
+                    updated_any = true;
+                }
+                if takeover.claude_cn {
+                    self.takeover_live_config_best_effort(&AppType::ClaudeCn)
                         .await?;
                     updated_any = true;
                 }

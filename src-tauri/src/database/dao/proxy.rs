@@ -325,7 +325,7 @@ impl Database {
         // 根据 app_type 使用不同的默认值（与 schema.rs seed 保持一致）
         let (retries, fb_timeout, idle_timeout, cb_fail, cb_succ, cb_timeout, cb_rate, cb_min) =
             match app_type {
-                "claude" => (6, 90, 180, 8, 3, 90, 0.7, 15),
+                "claude" | "claude-cn" => (6, 90, 180, 8, 3, 90, 0.7, 15),
                 "codex" => (3, 60, 120, 4, 2, 60, 0.6, 10),
                 "gemini" => (5, 60, 120, 4, 2, 60, 0.6, 10),
                 _ => (3, 60, 120, 4, 2, 60, 0.6, 10), // 默认值
@@ -349,6 +349,17 @@ impl Database {
                 cb_rate,
                 cb_min
             ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        conn.execute(
+            "INSERT OR IGNORE INTO proxy_config (
+                app_type, max_retries,
+                streaming_first_byte_timeout, streaming_idle_timeout, non_streaming_timeout,
+                circuit_failure_threshold, circuit_success_threshold, circuit_timeout_seconds,
+                circuit_error_rate_threshold, circuit_min_requests
+            ) VALUES ('claude-cn', 6, 90, 180, 600, 8, 3, 90, 0.7, 15)",
+            [],
         )
         .map_err(|e| AppError::Database(e.to_string()))?;
 

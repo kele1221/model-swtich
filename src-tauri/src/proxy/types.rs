@@ -111,6 +111,8 @@ pub struct ProxyServerInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProxyTakeoverStatus {
     pub claude: bool,
+    #[serde(rename = "claude-cn")]
+    pub claude_cn: bool,
     pub codex: bool,
     pub gemini: bool,
     pub opencode: bool,
