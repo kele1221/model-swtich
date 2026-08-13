@@ -1,22 +1,34 @@
 import {
+  Activity,
   BarChart3,
   Check,
+  ChevronDown,
   Copy,
   Edit,
   Loader2,
   Minus,
   Play,
   Plus,
-  ShieldAlert,
   Terminal,
-  TestTube2,
   Trash2,
   Zap,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { AppId } from "@/lib/api";
+
+interface OpenClawDefaultModelOption {
+  id: string;
+  name?: string;
+}
 
 interface ProviderActionsProps {
   appId?: AppId;
@@ -42,7 +54,20 @@ interface ProviderActionsProps {
   isReadOnly?: boolean;
   // OpenClaw: default model
   isDefaultModel?: boolean;
-  onSetAsDefault?: () => void;
+  defaultModelOptions?: OpenClawDefaultModelOption[];
+  onSetAsDefault?: (modelId?: string) => void;
+}
+
+// 主按钮的呈现状态。title 用于 disabled 态向用户解释为何不可点击；
+// 因 Button 基类带 disabled:pointer-events-none，title 必须挂在外层非禁用
+// 的 wrapper 上才会在 hover 时显示（见下方 <span> 包裹）。
+interface MainButtonState {
+  disabled: boolean;
+  variant: "default" | "secondary";
+  className: string;
+  icon: JSX.Element;
+  text: string;
+  title?: string;
 }
 
 export function ProviderActions({
@@ -68,6 +93,7 @@ export function ProviderActions({
   isReadOnly = false,
   // OpenClaw: default model
   isDefaultModel = false,
+  defaultModelOptions = [],
   onSetAsDefault,
 }: ProviderActionsProps) {
   const { t } = useTranslation();
@@ -108,7 +134,7 @@ export function ProviderActions({
     }
   };
 
-  const getMainButtonState = () => {
+  const getMainButtonState = (): MainButtonState => {
     if (isOmo) {
       if (isCurrent) {
         return {
@@ -174,16 +200,6 @@ export function ProviderActions({
       };
     }
 
-    if (isOfficialBlockedByProxy) {
-      return {
-        disabled: true,
-        variant: "secondary" as const,
-        className: "opacity-40 cursor-not-allowed",
-        icon: <ShieldAlert className="h-4 w-4" />,
-        text: t("provider.blockedByProxy", { defaultValue: "已拦截" }),
-      };
-    }
-
     if (isCurrent) {
       return {
         disabled: true,
@@ -192,6 +208,17 @@ export function ProviderActions({
           "bg-gray-200 text-muted-foreground hover:bg-gray-200 hover:text-muted-foreground dark:bg-gray-700 dark:hover:bg-gray-700",
         icon: <Check className="h-4 w-4" />,
         text: t("provider.inUse"),
+      };
+    }
+
+    if (isOfficialBlockedByProxy) {
+      return {
+        disabled: true,
+        variant: "default" as const,
+        className: "",
+        icon: <Play className="h-4 w-4" />,
+        text: t("provider.enable"),
+        title: t("provider.blockedByProxyHint"),
       };
     }
 
@@ -228,18 +255,72 @@ export function ProviderActions({
             appId === "hermes"
               ? t("provider.enable", { defaultValue: "启用" })
               : t("provider.setAsDefault", { defaultValue: "设为默认" });
+          const defaultButtonClassName = cn(
+            "w-fit px-2.5",
+            isDefaultModel
+              ? "bg-gray-200 text-muted-foreground dark:bg-gray-700 opacity-60 cursor-not-allowed"
+              : "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700",
+          );
+
+          if (
+            appId === "openclaw" &&
+            !isDefaultModel &&
+            defaultModelOptions.length > 1
+          ) {
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="default"
+                    className={defaultButtonClassName}
+                  >
+                    <Zap className="h-4 w-4" />
+                    {inactiveLabel}
+                    <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="max-h-72 min-w-64 overflow-y-auto"
+                >
+                  <DropdownMenuLabel>
+                    {t("openclaw.selectDefaultModel", {
+                      defaultValue: "选择默认模型",
+                    })}
+                  </DropdownMenuLabel>
+                  {defaultModelOptions.map((model) => (
+                    <DropdownMenuItem
+                      key={model.id}
+                      onSelect={() => onSetAsDefault(model.id)}
+                      className="flex min-w-0 flex-col items-start gap-0.5"
+                    >
+                      <span className="max-w-72 truncate">
+                        {model.name?.trim() || model.id}
+                      </span>
+                      {model.name?.trim() && model.name.trim() !== model.id && (
+                        <span className="max-w-72 truncate font-mono text-xs text-muted-foreground">
+                          {model.id}
+                        </span>
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          }
+
           return (
             <Button
               size="sm"
               variant={isDefaultModel ? "secondary" : "default"}
-              onClick={isDefaultModel ? undefined : onSetAsDefault}
-              disabled={isDefaultModel}
-              className={cn(
-                "w-fit px-2.5",
+              onClick={
                 isDefaultModel
-                  ? "bg-gray-200 text-muted-foreground dark:bg-gray-700 opacity-60 cursor-not-allowed"
-                  : "bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700",
-              )}
+                  ? undefined
+                  : () => onSetAsDefault(defaultModelOptions[0]?.id)
+              }
+              disabled={isDefaultModel}
+              className={defaultButtonClassName}
             >
               <Zap className="h-4 w-4" />
               {isDefaultModel ? activeLabel : inactiveLabel}
@@ -247,16 +328,26 @@ export function ProviderActions({
           );
         })()}
 
-      <Button
-        size="sm"
-        variant={buttonState.variant}
-        onClick={handleMainButtonClick}
-        disabled={buttonState.disabled}
-        className={cn("w-[4.5rem] px-2.5", buttonState.className)}
+      {/* wrapper span 承接 hover：disabled 按钮自身 pointer-events:none，
+          原生 title 与 cursor 都必须挂在未禁用的外层元素上才会生效 */}
+      <span
+        title={buttonState.title}
+        className={cn(
+          "inline-flex",
+          buttonState.disabled && "cursor-not-allowed",
+        )}
       >
-        {buttonState.icon}
-        {buttonState.text}
-      </Button>
+        <Button
+          size="sm"
+          variant={buttonState.variant}
+          onClick={handleMainButtonClick}
+          disabled={buttonState.disabled}
+          className={cn("w-[4.5rem] px-2.5", buttonState.className)}
+        >
+          {buttonState.icon}
+          {buttonState.text}
+        </Button>
+      </span>
 
       <div className="flex items-center gap-1">
         <Button
@@ -288,7 +379,7 @@ export function ProviderActions({
           variant="ghost"
           onClick={onTest || undefined}
           disabled={isTesting}
-          title={t("modelTest.testProvider", "测试模型")}
+          title={t("provider.connectivityCheck", "检测连通")}
           className={cn(
             iconButtonClass,
             !onTest && "opacity-40 cursor-not-allowed text-muted-foreground",
@@ -297,7 +388,7 @@ export function ProviderActions({
           {isTesting ? (
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : (
-            <TestTube2 className="h-4 w-4" />
+            <Activity className="h-4 w-4" />
           )}
         </Button>
 

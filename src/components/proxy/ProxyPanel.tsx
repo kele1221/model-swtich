@@ -15,12 +15,12 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ToggleRow } from "@/components/ui/toggle-row";
-import { useProxyStatus } from "@/hooks/useProxyStatus";
 import { toast } from "sonner";
 import { useFailoverQueue } from "@/lib/query/failover";
 import { ProviderHealthBadge } from "@/components/providers/ProviderHealthBadge";
 import { useProviderHealth } from "@/lib/query/failover";
 import {
+  useProxyStatusQuery,
   useProxyTakeoverStatus,
   useSetProxyTakeoverForApp,
   useGlobalProxyConfig,
@@ -28,6 +28,8 @@ import {
 } from "@/lib/query/proxy";
 import type { ProxyStatus } from "@/types/proxy";
 import { useTranslation } from "react-i18next";
+import { AnimatePresence, motion } from "framer-motion";
+import { extractErrorMessage } from "@/utils/errorUtils";
 
 interface ProxyPanelProps {
   enableLocalProxy: boolean;
@@ -43,7 +45,8 @@ export function ProxyPanel({
   isProxyPending,
 }: ProxyPanelProps) {
   const { t } = useTranslation();
-  const { status, isRunning } = useProxyStatus();
+  const { data: status } = useProxyStatusQuery();
+  const isRunning = status?.running ?? false;
 
   // 获取应用接管状态
   const { data: takeoverStatus } = useProxyTakeoverStatus();
@@ -70,6 +73,7 @@ export function ProxyPanel({
   const { data: claudeQueue = [] } = useFailoverQueue("claude");
   const { data: codexQueue = [] } = useFailoverQueue("codex");
   const { data: geminiQueue = [] } = useFailoverQueue("gemini");
+  const { data: grokQueue = [] } = useFailoverQueue("grokbuild");
 
   const handleTakeoverChange = async (appType: string, enabled: boolean) => {
     try {
@@ -87,8 +91,12 @@ export function ProxyPanel({
         { closeButton: true },
       );
     } catch (error) {
+      const detail =
+        extractErrorMessage(error) ||
+        t("common.unknown", { defaultValue: "未知错误" });
       toast.error(
         t("proxy.takeover.failed", {
+          detail,
           defaultValue: "切换接管状态失败",
         }),
       );
@@ -138,6 +146,8 @@ export function ProxyPanel({
         return false;
       }
     };
+    const normalizedAddress =
+      addressTrimmed === "localhost" ? "127.0.0.1" : addressTrimmed;
     const isValidAddress =
       addressTrimmed === "localhost" ||
       addressTrimmed === "0.0.0.0" ||
@@ -175,7 +185,7 @@ export function ProxyPanel({
     try {
       await updateGlobalConfig.mutateAsync({
         ...globalConfig,
-        listenAddress: addressTrimmed,
+        listenAddress: normalizedAddress,
         listenPort: port,
       });
       toast.success(
@@ -248,49 +258,69 @@ export function ProxyPanel({
           />
         </div>
 
-        {/* [3] App takeover switches */}
-        <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4 space-y-3">
-          <p className="text-xs font-medium text-primary">
-            {t("proxyConfig.appTakeover", {
-              defaultValue: "应用接管",
-            })}
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            {(
-              [
-                { appType: "claude", label: "Claude" },
-                { appType: "claude-cn", label: "Claude CN" },
-                { appType: "codex", label: "Codex" },
-                { appType: "gemini", label: "Gemini" },
-              ] as const
-            ).map(({ appType, label }) => {
-              const isEnabled =
-                takeoverStatus?.[appType as keyof typeof takeoverStatus] ??
-                false;
-              return (
-                <div
-                  key={appType}
-                  className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
-                >
-                  <span className="text-sm font-medium">{label}</span>
-                  <Switch
-                    checked={isEnabled}
-                    onCheckedChange={(checked) =>
-                      handleTakeoverChange(appType, checked)
-                    }
-                    disabled={setTakeoverForApp.isPending}
-                  />
+        {/* [3] App takeover switches — animated, visible only when proxy is running */}
+        <AnimatePresence>
+          {isRunning && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: "easeInOut" }}
+              className="overflow-hidden"
+            >
+              <div className="rounded-xl border-2 border-primary/20 bg-primary/5 p-4 space-y-3">
+                <p className="text-xs font-medium text-primary">
+                  {t("proxyConfig.appTakeover", {
+                    defaultValue: "应用接管",
+                  })}
+                </p>
+                <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                  {(
+                    [
+                      "claude",
+                      "claude-cn",
+                      "codex",
+                      "gemini",
+                      "grokbuild",
+                    ] as const
+                  ).map((appType) => {
+                    const isEnabled =
+                      takeoverStatus?.[
+                        appType as keyof typeof takeoverStatus
+                      ] ?? false;
+                    return (
+                      <div
+                        key={appType}
+                        className="flex items-center justify-between rounded-md border border-primary/20 bg-background/60 px-3 py-2"
+                      >
+                        <span className="text-sm font-medium capitalize">
+                          {appType === "claude-cn"
+                            ? "Claude CN"
+                            : appType === "grokbuild"
+                              ? "Grok Build"
+                              : appType}
+                        </span>
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(checked) =>
+                            handleTakeoverChange(appType, checked)
+                          }
+                          disabled={setTakeoverForApp.isPending}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {t("proxy.takeover.hint", {
-              defaultValue:
-                "选择要接管的应用，启用后该应用的请求将通过本地代理转发",
-            })}
-          </p>
-        </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("proxy.takeover.hint", {
+                    defaultValue:
+                      "选择要接管的应用，启用后该应用的请求将通过本地代理转发",
+                  })}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Running state: service info + stats */}
         {isRunning && status ? (
@@ -399,7 +429,8 @@ export function ProxyPanel({
               {/* [6] Provider queues */}
               {(claudeQueue.length > 0 ||
                 codexQueue.length > 0 ||
-                geminiQueue.length > 0) && (
+                geminiQueue.length > 0 ||
+                grokQueue.length > 0) && (
                 <div className="pt-3 border-t border-border space-y-3">
                   <div className="flex items-center gap-2">
                     <ListOrdered className="h-3.5 w-3.5 text-muted-foreground" />
@@ -437,6 +468,18 @@ export function ProxyPanel({
                       appType="gemini"
                       appLabel="Gemini"
                       targets={geminiQueue.map((item) => ({
+                        id: item.providerId,
+                        name: item.providerName,
+                      }))}
+                      status={status}
+                    />
+                  )}
+
+                  {grokQueue.length > 0 && (
+                    <ProviderQueueGroup
+                      appType="grokbuild"
+                      appLabel="Grok Build"
+                      targets={grokQueue.map((item) => ({
                         id: item.providerId,
                         name: item.providerName,
                       }))}

@@ -46,6 +46,8 @@ pub fn sync_gemini_usage(db: &Database) -> Result<SessionSyncResult, AppError> {
         imported: 0,
         skipped: 0,
         files_scanned: files.len() as u32,
+        suspected_duplicates: 0,
+        deferred_files: 0,
         errors: vec![],
     };
 
@@ -350,7 +352,8 @@ fn insert_gemini_session_entry(
     .map_err(|e| AppError::Database(format!("插入 Gemini 会话日志失败: {e}")))?;
 
     // changes() > 0 表示新插入或已更新，== 0 表示值完全相同（无实际变更）
-    Ok(conn.changes() > 0)
+    let changed = conn.changes() > 0;
+    Ok(changed)
 }
 
 /// 查找 Gemini 模型定价

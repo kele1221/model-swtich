@@ -9,6 +9,12 @@ import { extractErrorMessage } from "@/utils/errorUtils";
 import { generateUUID } from "@/utils/uuid";
 import { openclawKeys } from "@/hooks/useOpenClaw";
 import { invalidateHermesProviderCaches } from "@/hooks/useHermes";
+import { proxyKeys } from "@/lib/query/proxy";
+import { usageKeys } from "@/lib/query/usage";
+import {
+  CODEX_OFFICIAL_PROVIDER_ID,
+  GROKBUILD_OFFICIAL_PROVIDER_ID,
+} from "@/utils/providerCapabilities";
 
 export const useAddProviderMutation = (appId: AppId) => {
   const queryClient = useQueryClient();
@@ -19,8 +25,50 @@ export const useAddProviderMutation = (appId: AppId) => {
       providerInput: Omit<Provider, "id"> & {
         providerKey?: string;
         addToLive?: boolean;
+        ensureClaudeDesktopOfficialSeed?: boolean;
+        ensureCodexOfficialSeed?: boolean;
+        ensureGrokBuildOfficialSeed?: boolean;
       },
     ) => {
+      const {
+        providerKey: _providerKey,
+        addToLive,
+        ensureClaudeDesktopOfficialSeed,
+        ensureCodexOfficialSeed,
+        ensureGrokBuildOfficialSeed,
+        ...rest
+      } = providerInput;
+
+      if (appId === "claude-desktop" && ensureClaudeDesktopOfficialSeed) {
+        await providersApi.ensureClaudeDesktopOfficialProvider();
+        const providers = await providersApi.getAll(appId);
+        const officialProvider = providers["claude-desktop-official"];
+        if (!officialProvider) {
+          throw new Error("Claude Desktop official provider was not created");
+        }
+        return officialProvider;
+      }
+
+      if (appId === "codex" && ensureCodexOfficialSeed) {
+        await providersApi.ensureCodexOfficialProvider();
+        const providers = await providersApi.getAll(appId);
+        const officialProvider = providers[CODEX_OFFICIAL_PROVIDER_ID];
+        if (!officialProvider) {
+          throw new Error("Codex official provider was not created");
+        }
+        return officialProvider;
+      }
+
+      if (appId === "grokbuild" && ensureGrokBuildOfficialSeed) {
+        await providersApi.ensureGrokBuildOfficialProvider();
+        const providers = await providersApi.getAll(appId);
+        const officialProvider = providers[GROKBUILD_OFFICIAL_PROVIDER_ID];
+        if (!officialProvider) {
+          throw new Error("Grok Build official provider was not created");
+        }
+        return officialProvider;
+      }
+
       let id: string;
 
       if (appId === "opencode" || appId === "openclaw" || appId === "hermes") {
@@ -39,8 +87,6 @@ export const useAddProviderMutation = (appId: AppId) => {
       } else {
         id = generateUUID();
       }
-
-      const { providerKey: _providerKey, addToLive, ...rest } = providerInput;
 
       const newProvider: Provider = {
         ...rest,
@@ -125,8 +171,16 @@ export const useUpdateProviderMutation = (appId: AppId) => {
       await providersApi.update(provider, appId, originalId);
       return provider;
     },
-    onSuccess: async () => {
+    onSuccess: async (provider, variables) => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
+      await queryClient.invalidateQueries({
+        queryKey: usageKeys.script(provider.id, appId),
+      });
+      if (variables.originalId && variables.originalId !== provider.id) {
+        await queryClient.invalidateQueries({
+          queryKey: usageKeys.script(variables.originalId, appId),
+        });
+      }
       if (appId === "openclaw") {
         await queryClient.invalidateQueries({
           queryKey: openclawKeys.health,
@@ -233,7 +287,7 @@ export const useSwitchProviderMutation = (appId: AppId) => {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["providers", appId] });
       if (appId === "claude-desktop") {
-        await queryClient.invalidateQueries({ queryKey: ["proxyStatus"] });
+        await queryClient.invalidateQueries({ queryKey: proxyKeys.status });
         await queryClient.invalidateQueries({
           queryKey: ["claudeDesktopStatus"],
         });
@@ -243,6 +297,9 @@ export const useSwitchProviderMutation = (appId: AppId) => {
       if (appId === "opencode") {
         await queryClient.invalidateQueries({
           queryKey: ["opencodeLiveProviderIds"],
+        });
+        await queryClient.invalidateQueries({
+          queryKey: ["opencode", "runtime-models"],
         });
         await queryClient.invalidateQueries({
           queryKey: ["omo", "current-provider-id"],
@@ -351,6 +408,9 @@ export const useSaveSettingsMutation = () => {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["settings"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["opencode", "runtime-models"],
+      });
     },
   });
 };

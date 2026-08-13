@@ -48,6 +48,7 @@ const createSettings = (
   enableClaudePluginIntegration: false,
   claudeConfigDir: "/claude/custom",
   codexConfigDir: "/codex/custom",
+  grokConfigDir: "/grok/custom",
   language: "zh",
   ...overrides,
 });
@@ -69,6 +70,7 @@ describe("useDirectorySettings", () => {
       if (app === "claude-cn") return "/remote/claude-cn";
       if (app === "codex") return "/remote/codex";
       if (app === "gemini") return "/remote/gemini";
+      if (app === "grokbuild") return "/remote/grok";
       if (app === "opencode") return "/remote/opencode";
       if (app === "openclaw") return "/remote/openclaw";
       if (app === "hermes") return "/remote/hermes";
@@ -93,6 +95,7 @@ describe("useDirectorySettings", () => {
       "claude-cn": "/remote/claude-cn",
       codex: "/remote/codex",
       gemini: "/remote/gemini",
+      grokbuild: "/remote/grok",
       opencode: "/remote/opencode",
       openclaw: "/remote/openclaw",
       hermes: "/remote/hermes",
@@ -185,7 +188,7 @@ describe("useDirectorySettings", () => {
 
     expect(result.current.appConfigDir).toBe("/new/app");
     expect(selectConfigDirectoryMock).toHaveBeenCalledWith(
-      "/home/mock/.cc-switch",
+      "/home/mock/.model-switch",
     );
   });
 
@@ -215,7 +218,7 @@ describe("useDirectorySettings", () => {
     });
     expect(result.current.resolvedDirs.claude).toBe("/home/mock/.claude");
     expect(result.current.resolvedDirs.codex).toBe("/home/mock/.codex");
-    expect(result.current.resolvedDirs.appConfig).toBe("/home/mock/.cc-switch");
+    expect(result.current.resolvedDirs.appConfig).toBe("/home/mock/.model-switch");
   });
 
   it("updates openclaw directory when browsing succeeds", async () => {
@@ -252,6 +255,7 @@ describe("useDirectorySettings", () => {
         claude: "/server/claude",
         codex: "/server/codex",
         gemini: "/server/gemini",
+        grokbuild: "/server/grok",
         opencode: "/server/opencode",
         openclaw: "/server/openclaw",
       });
@@ -260,6 +264,7 @@ describe("useDirectorySettings", () => {
     expect(result.current.resolvedDirs.claude).toBe("/server/claude");
     expect(result.current.resolvedDirs.codex).toBe("/server/codex");
     expect(result.current.resolvedDirs.gemini).toBe("/server/gemini");
+    expect(result.current.resolvedDirs.grokbuild).toBe("/server/grok");
     expect(result.current.resolvedDirs.opencode).toBe("/server/opencode");
     expect(result.current.resolvedDirs.openclaw).toBe("/server/openclaw");
   });

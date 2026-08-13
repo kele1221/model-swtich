@@ -28,7 +28,8 @@ export function ClaudeDesktopRouteToggle({
     takeoverStatus?.claude ||
       takeoverStatus?.["claude-cn"] ||
       takeoverStatus?.codex ||
-      takeoverStatus?.gemini,
+      takeoverStatus?.gemini ||
+      takeoverStatus?.grokbuild,
   );
   const routeAddress = status?.address ?? "127.0.0.1";
   const routePort = status?.port ?? 15721;
@@ -84,7 +85,7 @@ export function ClaudeDesktopRouteToggle({
           className={cn(
             "h-4 w-4 transition-colors",
             isRunning
-              ? "text-emerald-500 animate-pulse"
+              ? "text-emerald-500 status-heartbeat"
               : "text-muted-foreground",
           )}
         />

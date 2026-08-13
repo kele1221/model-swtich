@@ -6,11 +6,15 @@ import type {
   SessionMeta,
   Settings,
 } from "@/types";
+import { deepClone } from "@/utils/deepClone";
 
 type ProvidersByApp = Record<AppId, Record<string, Provider>>;
 type CurrentProviderState = Record<AppId, string>;
 type McpConfigState = Record<AppId, Record<string, McpServer>>;
-type LiveProviderIdsByApp = Record<"opencode" | "openclaw" | "hermes", string[]>;
+type LiveProviderIdsByApp = Record<
+  "opencode" | "openclaw" | "hermes",
+  string[]
+>;
 
 const createDefaultProviders = (): ProvidersByApp => ({
   claude: {
@@ -66,6 +70,7 @@ const createDefaultProviders = (): ProvidersByApp => ({
       createdAt: Date.now(),
     },
   },
+  grokbuild: {},
   opencode: {},
   openclaw: {},
   hermes: {},
@@ -77,6 +82,7 @@ const createDefaultCurrent = (): CurrentProviderState => ({
   "claude-desktop": "",
   codex: "codex-1",
   gemini: "gemini-1",
+  grokbuild: "",
   opencode: "",
   openclaw: "",
   hermes: "",
@@ -191,13 +197,14 @@ let mcpConfigs: McpConfigState = {
     },
   },
   gemini: {},
+  grokbuild: {},
   opencode: {},
   openclaw: {},
   hermes: {},
 };
 
 const cloneProviders = (value: ProvidersByApp) =>
-  JSON.parse(JSON.stringify(value)) as ProvidersByApp;
+  deepClone(value) as ProvidersByApp;
 
 export const resetProviderState = () => {
   providers = createDefaultProviders();
@@ -261,6 +268,7 @@ export const resetProviderState = () => {
       },
     },
     gemini: {},
+    grokbuild: {},
     opencode: {},
     openclaw: {},
     hermes: {},
@@ -272,9 +280,9 @@ export const getProviders = (appType: AppId) =>
 
 export const getCurrentProviderId = (appType: AppId) => current[appType] ?? "";
 
-export const getLiveProviderIds = (appType: "opencode" | "openclaw" | "hermes") => [
-  ...liveProviderIds[appType],
-];
+export const getLiveProviderIds = (
+  appType: "opencode" | "openclaw" | "hermes",
+) => [...liveProviderIds[appType]];
 
 export const setLiveProviderIds = (
   appType: "opencode" | "openclaw" | "hermes",
@@ -300,10 +308,7 @@ export const setProviders = (
   appType: AppId,
   data: Record<string, Provider>,
 ) => {
-  providers[appType] = JSON.parse(JSON.stringify(data)) as Record<
-    string,
-    Provider
-  >;
+  providers[appType] = deepClone(data) as Record<string, Provider>;
 };
 
 export const addProvider = (appType: AppId, provider: Provider) => {
@@ -342,13 +347,9 @@ export const updateSortOrder = (
 };
 
 export const listProviders = (appType: AppId) =>
-  JSON.parse(JSON.stringify(providers[appType] ?? {})) as Record<
-    string,
-    Provider
-  >;
+  deepClone(providers[appType] ?? {}) as Record<string, Provider>;
 
-export const getSettings = () =>
-  JSON.parse(JSON.stringify(settingsState)) as Settings;
+export const getSettings = () => deepClone(settingsState) as Settings;
 
 export const setSettings = (data: Partial<Settings>) => {
   settingsState = { ...settingsState, ...data };
@@ -361,9 +362,10 @@ export const setAppConfigDirOverrideState = (value: string | null) => {
 };
 
 export const getMcpConfig = (appType: AppId) => {
-  const servers = JSON.parse(
-    JSON.stringify(mcpConfigs[appType] ?? {}),
-  ) as Record<string, McpServer>;
+  const servers = deepClone(mcpConfigs[appType] ?? {}) as Record<
+    string,
+    McpServer
+  >;
   return {
     configPath: `/mock/${appType}.mcp.json`,
     servers,
@@ -374,10 +376,7 @@ export const setMcpConfig = (
   appType: AppId,
   value: Record<string, McpServer>,
 ) => {
-  mcpConfigs[appType] = JSON.parse(JSON.stringify(value)) as Record<
-    string,
-    McpServer
-  >;
+  mcpConfigs[appType] = deepClone(value) as Record<string, McpServer>;
 };
 
 export const setMcpServerEnabled = (
@@ -400,7 +399,7 @@ export const upsertMcpServer = (
   if (!mcpConfigs[appType]) {
     mcpConfigs[appType] = {};
   }
-  mcpConfigs[appType][id] = JSON.parse(JSON.stringify(server)) as McpServer;
+  mcpConfigs[appType][id] = deepClone(server) as McpServer;
 };
 
 export const deleteMcpServer = (appType: AppId, id: string) => {
@@ -408,14 +407,11 @@ export const deleteMcpServer = (appType: AppId, id: string) => {
   delete mcpConfigs[appType][id];
 };
 
-export const listSessions = () =>
-  JSON.parse(JSON.stringify(sessionsState)) as SessionMeta[];
+export const listSessions = () => deepClone(sessionsState) as SessionMeta[];
 
 export const getSessionMessages = (providerId: string, sourcePath: string) =>
-  JSON.parse(
-    JSON.stringify(
-      sessionMessagesState[sessionMessageKey(providerId, sourcePath)] ?? [],
-    ),
+  deepClone(
+    sessionMessagesState[sessionMessageKey(providerId, sourcePath)] ?? [],
   ) as SessionMessage[];
 
 export const deleteSession = (
@@ -439,8 +435,8 @@ export const setSessionFixtures = (
   sessions: SessionMeta[],
   messages: Record<string, SessionMessage[]>,
 ) => {
-  sessionsState = JSON.parse(JSON.stringify(sessions)) as SessionMeta[];
-  sessionMessagesState = JSON.parse(JSON.stringify(messages)) as Record<
+  sessionsState = deepClone(sessions) as SessionMeta[];
+  sessionMessagesState = deepClone(messages) as Record<
     string,
     SessionMessage[]
   >;
