@@ -1670,6 +1670,7 @@ impl RequestForwarder {
         } else {
             let status_code = status.as_u16();
             let body_text = String::from_utf8(response.bytes().await?.to_vec()).ok();
+            let (status_code, body_text) = normalize_upstream_error(status_code, body_text);
 
             Err(ProxyError::UpstreamError {
                 status: status_code,
@@ -1883,6 +1884,25 @@ impl RequestForwarder {
             _ => ErrorCategory::NonRetryable,
         }
     }
+}
+
+/// 修正明确被上游误标为 400 的限流响应，同时原样保留响应体。
+fn normalize_upstream_error(status: u16, body: Option<String>) -> (u16, Option<String>) {
+    let is_rate_limit = status == 400
+        && body.as_deref().is_some_and(|body| {
+            let Ok(payload) = serde_json::from_str::<Value>(body) else {
+                return false;
+            };
+            let Some(error) = payload.get("error") else {
+                return false;
+            };
+
+            ["code", "type"].iter().any(|field| {
+                error.get(*field).and_then(Value::as_str) == Some("rate_limit_exceeded")
+            })
+        });
+
+    (if is_rate_limit { 429 } else { status }, body)
 }
 
 /// 从 ProxyError 中提取错误消息
@@ -2336,6 +2356,54 @@ mod tests {
             streaming_first_byte_timeout,
             max_attempts: 1,
         }
+    }
+
+    #[test]
+    fn rate_limit_code_in_400_response_is_normalized_to_429() {
+        let body = r#"{"error":{"message":"请求过于频繁，请稍后重试","type":"upstream_error","param":null,"code":"rate_limit_exceeded"}}"#
+            .to_string();
+
+        let normalized = normalize_upstream_error(400, Some(body.clone()));
+
+        assert_eq!(normalized, (429, Some(body)));
+    }
+
+    #[test]
+    fn rate_limit_type_in_400_response_is_normalized_to_429() {
+        let body = r#"{"error":{"message":"请求过于频繁，请稍后重试","type":"rate_limit_exceeded","param":null,"code":"upstream_error"}}"#
+            .to_string();
+
+        let normalized = normalize_upstream_error(400, Some(body.clone()));
+
+        assert_eq!(normalized, (429, Some(body)));
+    }
+
+    #[test]
+    fn ordinary_400_response_keeps_original_status_and_body() {
+        let body = r#"{"error":{"message":"invalid request","type":"invalid_request_error","code":"invalid_request_error"}}"#
+            .to_string();
+
+        let normalized = normalize_upstream_error(400, Some(body.clone()));
+
+        assert_eq!(normalized, (400, Some(body)));
+    }
+
+    #[test]
+    fn malformed_400_response_keeps_original_status_and_body() {
+        let body = "not-json".to_string();
+
+        let normalized = normalize_upstream_error(400, Some(body.clone()));
+
+        assert_eq!(normalized, (400, Some(body)));
+    }
+
+    #[test]
+    fn rate_limit_marker_does_not_rewrite_non_400_status() {
+        let body = r#"{"error":{"type":"rate_limit_exceeded"}}"#.to_string();
+
+        let normalized = normalize_upstream_error(503, Some(body.clone()));
+
+        assert_eq!(normalized, (503, Some(body)));
     }
 
     #[test]
